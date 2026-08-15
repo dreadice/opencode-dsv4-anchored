@@ -1,0 +1,10 @@
+# 官方 opencode 源码参考（v1.18.18），只读参考，不提交
+reference/
+
+node_modules/
+dist/
+*.tgz
+*.tsbuildinfo
+
+.env
+.env.*
