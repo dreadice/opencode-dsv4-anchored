@@ -36,15 +36,15 @@ read/grep 自行探索，收益不确定。全量开放对应 dsh README 原版�
 哪些再具体 allow，opencode 加载后就有了"）：
 
 ```ts
-promoteRules = [...agent.permission, ...sessionDenies]  // 全部 merge 追加
+promoteRules = [...agent.permission, ...sessionDenies]; // 全部 merge 追加
 // sessionDenies = session.permission 中 action==="deny" 的规则（排除插件自己的 deny *）
 ```
 
 - `client.app.agents()` 返回全部 agent 的 `prompt` 与 `permission`（`agent.ts:44,52`），
   内置 build 的 defaults 即 `{"*":"allow", doom_loop:"ask", question/plan_enter:
-  "deny", external_directory: ask+白名单 allow, read env 特殊 ask}`（`agent.ts:119-136`）；
+"deny", external_directory: ask+白名单 allow, read env 特殊 ask}`（`agent.ts:119-136`）；
 - 效果 = **恢复到 opencode 加载后的自然权限状态**：build → 等价全量开放（`*:
-  allow` 覆盖），且 doom_loop/external_directory 的 ask 保留；explore → 保持只读
+allow` 覆盖），且 doom_loop/external_directory 的 ask 保留；explore → 保持只读
   白名单（其 ruleset 本身是 `*: deny`）；自定义 agent → ask/deny/allow 全部保留；
 - 派生 deny（subagent 的 task/todowrite/primary_tools、父会话 deny，位于
   session.permission）重排在 agent 规则之后 → **subagent 仍无法开 subagent**；
@@ -121,17 +121,19 @@ compaction 回退**对齐 dsh 的 `compactionTools`**——回退目录 = minima
 靠 bash 翻文件，效率反降）。opencode 映射（工具 id 已核实）：
 
 ```ts
-[{permission:"__dsv4_stage__", pattern:"compacted", action:"allow"}, // 回退哨兵（与首轮 bootstrap 哨兵区分，见下）
- {permission:"*", pattern:"*", action:"deny"},
- {permission:"bash", pattern:"*", action:"allow"},
- {permission:"str_replace_editor", pattern:"*", action:"allow"},
- {permission:"read", pattern:"*", action:"allow"},      // dsh read
- {permission:"glob", pattern:"*", action:"allow"},      // dsh glob
- {permission:"grep", pattern:"*", action:"allow"},      // dsh grep
- {permission:"edit", pattern:"*", action:"allow"},      // dsh write/edit（edit 权限覆盖 write/apply_patch）
- {permission:"todowrite", pattern:"*", action:"allow"}, // dsh todo_write
- {permission:"question", pattern:"*", action:"allow"},  // dsh ask_user_question
- {permission:"external_directory", pattern:"*", action:"allow"}]
+[
+  {permission: '__dsv4_stage__', pattern: 'compacted', action: 'allow'}, // 回退哨兵（与首轮 bootstrap 哨兵区分，见下）
+  {permission: '*', pattern: '*', action: 'deny'},
+  {permission: 'bash', pattern: '*', action: 'allow'},
+  {permission: 'str_replace_editor', pattern: '*', action: 'allow'},
+  {permission: 'read', pattern: '*', action: 'allow'}, // dsh read
+  {permission: 'glob', pattern: '*', action: 'allow'}, // dsh glob
+  {permission: 'grep', pattern: '*', action: 'allow'}, // dsh grep
+  {permission: 'edit', pattern: '*', action: 'allow'}, // dsh write/edit（edit 权限覆盖 write/apply_patch）
+  {permission: 'todowrite', pattern: '*', action: 'allow'}, // dsh todo_write
+  {permission: 'question', pattern: '*', action: 'allow'}, // dsh ask_user_question
+  {permission: 'external_directory', pattern: '*', action: 'allow'},
+];
 ```
 
 **epoch 判定（回退后不按旧历史误晋升）**：回退哨兵用独立的
@@ -275,7 +277,7 @@ apply_patch **三个**工具 → 首轮可见 4 个工具，且名字/参数与 
   edit/write/apply_patch 等全部非白名单工具（无需额外 deny）；首轮模型可见
   工具 = minimal 的 `[bash, str_replace_editor]`，集合与 dsh 完全一致；
 - **promote 时追加 `{permission:"str_replace_editor", pattern:"*",
-  action:"deny"}` 在规则末尾**（findLast 命中）→ 隐藏插件工具，目录恢复
+action:"deny"}` 在规则末尾**（findLast 命中）→ 隐藏插件工具，目录恢复
   opencode 自然状态；插件工具仅锚定期使用（用户："只是system用一下，后边隐藏就行"）；
 - **execute 自实现**四命令：`view`（读文件/目录，行号 cat -n 格式，16000 截断）、
   `create`（写文件）、`str_replace`（唯一匹配替换）、`insert`（行插入）；绝对
@@ -349,7 +351,7 @@ header tools 数量异常），则启用备选；达标则维持现状。
   +∞，we 系存在即通过；we 系不出现则不通过）——贴合 dsh"首行 `We need…`"
   （思维起步取向），对 `let me` 少量出现鲁棒（dsh r1 let me=1 仍 minimal）。
   词表可配置（`verify.terms`，默认英文 `we:["we need","we"]`、`let:
-  ["let me","let's"]`）；中文词表（`我们` vs `让我`/`我来`/`我先`）实验性：
+["let me","let's"]`）；中文词表（`我们` vs `让我`/`我来`/`我先`）实验性：
   标记不稳定，判别失败即 giveup，不锁死。
 - **解锁/判别收敛到 `chat.message` ensure**：信号持久化在历史，每轮扫历史即可
   ——`tool.execute.before` / `message.updated` 信号 hook 整个移除（天然幂等、
@@ -365,17 +367,17 @@ header tools 数量异常），则启用备选；达标则维持现状。
 
 ## 已确认的机制前提（实现时依赖）
 
-| 机制                                                                                                                                      | 来源                                                      |
-| ----------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------- |
+| 机制                                                                                                                                                | 来源                                                                       |
+| --------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
 | 工具可见性由 permission ruleset 控制，`findLast` 后写覆盖；`merge` = 按序拼接，agent 规则在前、session 规则在后                                     | `reference/opencode/.../permission/index.ts:28,204`；`session/tools.ts:87` |
-| `client.session.update` merge 追加、DB 持久化（重启不丢）                                                                                 | `.../handlers/session.ts:194`                             |
-| `chat.message` 在消息落库前触发、trigger 返回值丢弃但 `output.parts` 同引用可原地改写；hook 后 runLoop 从 DB 重读消息 → 注入进本次请求        | `.../session/prompt.ts:999,1046,1092`；`.../plugin/index.ts:282` |
-| `experimental.chat.messages.transform` input 为 `{}`，无法按会话/模型门控                                                                   | `.../session/prompt.ts:1255`                              |
-| `client.session.prompt` 新消息 id 单调递增（排在本消息后）；带 `tools` 会整体替换 session.permission                                         | `.../id/id.ts:51-70`；`.../session/prompt.ts:1060`        |
-| `experimental.chat.system.transform` 的 input 含 `model`，可按模型门控；触发时 system 已被 join 成单条字符串                                  | `.../session/llm/request.ts:69,58-66`                     |
-| 解锁信号（边界后 assistant 消息/工具调用）持久化在历史，`chat.message` 每轮扫历史即可（round-7：不用 `tool.execute.before`/`message.updated` hook） | `.../session/prompt.ts:999`；schema `.../v1/session.ts:597` |
-| subagent 创建带 `parentID` + 派生 deny（task/todowrite/primary_tools）；`session.created` 对 subagent 同样触发；`subagent_depth` 默认 1 挡嵌套 | `.../tool/task.ts:104-172`；`.../agent/subagent-permissions.ts:14-27` |
-| subagent 默认上下文 = agent.prompt + AGENTS.md + skills（与主会话相同，无 parentID 分支）；模型继承父会话                                      | `.../session/prompt.ts:1257-1269`；`.../tool/task.ts:181-184` |
-| `client.session.get` wire 返回全量 `Session.Info`（parentID/permission/agent/model），SDK 类型未声明需 `as any`                             | `.../session/session.ts:224-244`                          |
-| `client.app.agents()` 返回全部 agent（含内置）的 `prompt` 与 `permission`；`client.config.get` 不含内置 agent                              | `.../handlers/instance.ts:80-81`；`.../agent/agent.ts:44,52` |
-| dsh 零工具锚定轮实现：`anchor-turn.mjs`（prepend 锚定消息）+ `zero-tool-bootstrap.mjs`（剥全目录 + pre-step 按 `source.kind` 剥离上下文） | `reference/dsh-anchored-standard/zero-anchored-standard/` |
+| `client.session.update` merge 追加、DB 持久化（重启不丢）                                                                                           | `.../handlers/session.ts:194`                                              |
+| `chat.message` 在消息落库前触发、trigger 返回值丢弃但 `output.parts` 同引用可原地改写；hook 后 runLoop 从 DB 重读消息 → 注入进本次请求              | `.../session/prompt.ts:999,1046,1092`；`.../plugin/index.ts:282`           |
+| `experimental.chat.messages.transform` input 为 `{}`，无法按会话/模型门控                                                                           | `.../session/prompt.ts:1255`                                               |
+| `client.session.prompt` 新消息 id 单调递增（排在本消息后）；带 `tools` 会整体替换 session.permission                                                | `.../id/id.ts:51-70`；`.../session/prompt.ts:1060`                         |
+| `experimental.chat.system.transform` 的 input 含 `model`，可按模型门控；触发时 system 已被 join 成单条字符串                                        | `.../session/llm/request.ts:69,58-66`                                      |
+| 解锁信号（边界后 assistant 消息/工具调用）持久化在历史，`chat.message` 每轮扫历史即可（round-7：不用 `tool.execute.before`/`message.updated` hook） | `.../session/prompt.ts:999`；schema `.../v1/session.ts:597`                |
+| subagent 创建带 `parentID` + 派生 deny（task/todowrite/primary_tools）；`session.created` 对 subagent 同样触发；`subagent_depth` 默认 1 挡嵌套      | `.../tool/task.ts:104-172`；`.../agent/subagent-permissions.ts:14-27`      |
+| subagent 默认上下文 = agent.prompt + AGENTS.md + skills（与主会话相同，无 parentID 分支）；模型继承父会话                                           | `.../session/prompt.ts:1257-1269`；`.../tool/task.ts:181-184`              |
+| `client.session.get` wire 返回全量 `Session.Info`（parentID/permission/agent/model），SDK 类型未声明需 `as any`                                     | `.../session/session.ts:224-244`                                           |
+| `client.app.agents()` 返回全部 agent（含内置）的 `prompt` 与 `permission`；`client.config.get` 不含内置 agent                                       | `.../handlers/instance.ts:80-81`；`.../agent/agent.ts:44,52`               |
+| dsh 零工具锚定轮实现：`anchor-turn.mjs`（prepend 锚定消息）+ `zero-tool-bootstrap.mjs`（剥全目录 + pre-step 按 `source.kind` 剥离上下文）           | `reference/dsh-anchored-standard/zero-anchored-standard/`                  |

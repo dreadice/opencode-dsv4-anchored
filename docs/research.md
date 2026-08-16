@@ -136,10 +136,10 @@ assistant.`，`complete: true`，`includeRuntimeContext: false`）；
 - `experimental.chat.system.transform` hook（`session/llm/request.ts:69`）在 system 文本
   发送前可改写 `output.system: string[]`。
 - **限制（原 best-effort 文本过滤方案）**：触发时 `agent.prompt + env + instructions +
-  mcp + skills + user.system` 已被 join 成**单条**字符串（`request.ts:58-66`），无法按
+mcp + skills + user.system` 已被 join 成**单条**字符串（`request.ts:58-66`），无法按
   来源分离，只能文本级过滤。可用稳定标记：AGENTS.md 段以 `Instructions from: ` 开头
   （`session/instruction.ts:166`），技能目录段以 `Skills provide specialized
-  instructions` 开头（`session/system.ts:111`）。
+instructions` 开头（`session/system.ts:111`）。
 - **D3 修订（用户确认 2026-08-16）**：不再做文本过滤/恢复，改为 **system 常驻
   Minimal persona（`You are a helpful software engineer assistant.`）+ 原 system
   内容以 user 消息注入**。opencode 单次请求 messages 是数组、支持多条 user 消息，
@@ -150,7 +150,7 @@ assistant.`，`complete: true`，`includeRuntimeContext: false`）；
   （`suppressedContextSources`），issue #6 实测技能目录提醒在场时锚定 0/9、无
   目录 ~81%（dsh 里 skill-catalog 就是 user 消息形态）。**备选升级路径**：注入
   前按上面两个稳定标记切段过滤（`Instructions from:` / `Skills provide
-  specialized instructions`），首轮滤掉这两段、解锁后补注完整捕获。
+specialized instructions`），首轮滤掉这两段、解锁后补注完整捕获。
   默认保持完整注入，实测判别不达标才启用（详见 `decisions.md` D11）。
 
 ### 4.6 subagent（task 工具子会话）机制（2026-08-16 深研）
@@ -160,6 +160,7 @@ permission})`（`task.ts:156-172`）；`session.created` 对 subagent 同样触�
 `{sessionID, info}` 含 `info.parentID`（`session.ts:537`、`schema/src/v1/session.ts:543-568`）。
 
 **默认上下文（与主会话无差异，无 parentID 分支）**：
+
 - system = `agent.prompt`（若 agent 无 prompt 则用 `SystemPrompt.provider(model)`
   兜底）+ env + **AGENTS.md/CLAUDE.md/CONTEXT.md**（`instruction.ts:110-169`）+
   MCP 指令 + skills 清单（`system.ts:105-117`，仅清单非正文）——subagent 首轮
@@ -175,6 +176,7 @@ permission})`（`task.ts:156-172`）；`session.created` 对 subagent 同样触�
   与权限无关直接挡死——即使 permission 全 allow 也无法嵌套（除非用户调高配置）。
 
 **插件识别 subagent 的可行路径**：
+
 - `event`（`session.created`）：原生携带 parentID，但 `info.model` 此时为空；
 - `client.session.get(sessionID)`：wire 上返回全量 `Session.Info`（含 `parentID`/
   `agent`/`permission`/`model`，`session.ts:224-244`），SDK 类型未声明需 `as any`；
@@ -208,11 +210,11 @@ agent 规则同样 merge（`agent.ts:267-294`）。**这些 deny 在
 
 ### 4.8 注入合成内容到本次请求的三条路径（2026-08-16 深研，改 D3 实现方式）
 
-| 路径 | 触发点 | 特性 | 结论 |
-| --- | --- | --- | --- |
-| **A. `chat.message` 原地改 parts**（推荐） | `prompt.ts:999-1009` | hook 触发时消息**尚未落库**（落库在 `prompt.ts:1046-1047`）；trigger 返回值被忽略，但 `output.parts === resolvedParts` 同引用，**原地 push/splice 生效**（整体替换不生效）；runLoop 在 `prompt.ts:1092` 从 DB **重读**全部消息 → push 的 part 必然进入本次请求 | 无重入、无并发、持久化、`lastUser` 不变。新 part 需带 `id`(prt 开头)/`messageID`/`sessionID`/`type:"text"` |
-| **B. `experimental.chat.messages.transform`** | `prompt.ts:1255` | **input 是 `{}`，无 sessionID/model**，无法区分会话/门控 | 不能用于会话级注入（注入必须按 session 判定） |
-| **C. `client.session.prompt` 补发** | 插件侧 API | 新消息 id 严格单调（`id/id.ts:51-70`）→ **排在本消息之后**（顺序反了）；`noReply` 缺省会启动嵌套 runLoop（双循环）；合成消息也会再触发 chat.message（需防重入）；带 `tools` 会**整体替换** session.permission（`prompt.ts:1060-1067`） | 坑多，弃用 |
+| 路径                                          | 触发点               | 特性                                                                                                                                                                                                                                                           | 结论                                                                                                       |
+| --------------------------------------------- | -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| **A. `chat.message` 原地改 parts**（推荐）    | `prompt.ts:999-1009` | hook 触发时消息**尚未落库**（落库在 `prompt.ts:1046-1047`）；trigger 返回值被忽略，但 `output.parts === resolvedParts` 同引用，**原地 push/splice 生效**（整体替换不生效）；runLoop 在 `prompt.ts:1092` 从 DB **重读**全部消息 → push 的 part 必然进入本次请求 | 无重入、无并发、持久化、`lastUser` 不变。新 part 需带 `id`(prt 开头)/`messageID`/`sessionID`/`type:"text"` |
+| **B. `experimental.chat.messages.transform`** | `prompt.ts:1255`     | **input 是 `{}`，无 sessionID/model**，无法区分会话/门控                                                                                                                                                                                                       | 不能用于会话级注入（注入必须按 session 判定）                                                              |
+| **C. `client.session.prompt` 补发**           | 插件侧 API           | 新消息 id 严格单调（`id/id.ts:51-70`）→ **排在本消息之后**（顺序反了）；`noReply` 缺省会启动嵌套 runLoop（双循环）；合成消息也会再触发 chat.message（需防重入）；带 `tools` 会**整体替换** session.permission（`prompt.ts:1060-1067`）                         | 坑多，弃用                                                                                                 |
 
 另确认：`chat.params` 只能改 temperature 等参数（`request.ts:114-132`），不能改内容；
 不存在 `chat.params.transform` / `chat.message.transform`。`plugin.trigger` 对每个
@@ -288,7 +290,7 @@ hook 内 throw 零 token 拿到 100% 真实 system，取代插件自组装；rou
 
 - `SessionCreateData.body`：`{parentID?, title?}`；query `{directory?}`；
 - `SessionPromptData.body`：`{messageID?, model?{providerID,modelID}, agent?,
-  noReply?, system?, tools?, parts[]}`——**探针可指定与真实会话相同的
+noReply?, system?, tools?, parts[]}`——**探针可指定与真实会话相同的
   agent+model**；
 - `SessionUpdateData.body` 仅 `{title?}`（permission 需 `as any`，wire 的
   UpdatePayload 支持）；`session.update` 的 permission 是 **merge 追加**
@@ -312,7 +314,7 @@ hook 内 throw 零 token 拿到 100% 真实 system，取代插件自组装；rou
   注入 part 设 `synthetic: true` + 幂等标记文本双保险；
 - `session.messages` 返回 `Array<{info: Message, parts: Part[]}>`（
   `SessionMessagesResponses:200`），`Part` 含 `ReasoningPart`（`type:
-  "reasoning"`）与 `TextPart`——判别提取二者 `text` 字段拼接。
+"reasoning"`）与 `TextPart`——判别提取二者 `text` 字段拼接。
 
 **permission 语义核实**（`permission/index.ts:204-215` `disabled()`）：工具仅在
 匹配到 `rule.pattern === "*" && rule.action === "deny"` 时隐藏（非 `*` pattern
@@ -347,15 +349,15 @@ chat.message(真实会话 S, M)   ← chat.message 被 await，时机有保证
 ### 4.10 日志机制（round-5 研究，`app.log` 源码事实）
 
 - `client.app.log` = HTTP `POST /log` → Effect `logDebug/logInfo/logWarning/
-  logError`（`httpapi/handlers/control.ts:28-39`）；级别仅 **debug/info/warn/
+logError`（`httpapi/handlers/control.ts:28-39`）；级别仅 **debug/info/warn/
   error，无 trace**（`httpapi/groups/control.ts:17-29`）。
 - 输出：默认只写文件（`Global.Path.log/opencode.log`，`core/observability/
-  logging.ts:49-52,67-69`）；`OPENCODE_PRINT_LOGS=1` 才额外打 stderr；格式为
+logging.ts:49-52,67-69`）；`OPENCODE_PRINT_LOGS=1` 才额外打 stderr；格式为
   结构化 `key=value` 扁平化（嵌套对象展开、长字符串 JSON 化）。
 - 级别过滤在服务端：`minimumLogLevel()` 读 `OPENCODE_LOG_LEVEL`，默认
   **INFO**（`logging.ts:56-65`）→ debug 默认不落盘。
 - **插件侧含义**：插件与 opencode 同进程，读 `process.env.OPENCODE_LOG_LEVEL
-  === "DEBUG"` 一次缓存即可判断 debug 开关；debug 内容（完整 system/全文）必须
+=== "DEBUG"` 一次缓存即可判断 debug 开关；debug 内容（完整 system/全文）必须
   短路后才序列化 + HTTP，避免每轮白做（日志设计见 `design.md` §7）。
 
 ### 4.11 工具注册与 alias 研究（round-5，D10 依据）
@@ -365,10 +367,10 @@ chat.message(真实会话 S, M)   ← chat.message 被 await，时机有保证
 
 **插件层两条路径**：
 
-| 路径 | 机制 | 能力 | 结论 |
-| --- | --- | --- | --- |
-| `Hooks.tool` 注册自定义工具 | `registry.ts:196-199` 循环 `p.tool` → `fromPlugin()`（`registry.ts:120-176`），id = 对象 key；zod args → jsonSchema 发给 LLM；execute 经 EffectBridge 桥接（含 ask/truncate/agent 查询），受 permission 过滤 | **名字/描述/参数完全可控**（逐字复刻） | **可用（D10 采用）** |
-| `tool.definition` 改写 | `registry.ts:305-333` 组装目录时每工具触发，可改 `description`/`parameters` | **id 不可改**；全局生效（无 sessionID/模型门控）；参数改了 execute 不匹配会 break | 不可用于 alias |
+| 路径                        | 机制                                                                                                                                                                                                         | 能力                                                                              | 结论                 |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------- | -------------------- |
+| `Hooks.tool` 注册自定义工具 | `registry.ts:196-199` 循环 `p.tool` → `fromPlugin()`（`registry.ts:120-176`），id = 对象 key；zod args → jsonSchema 发给 LLM；execute 经 EffectBridge 桥接（含 ask/truncate/agent 查询），受 permission 过滤 | **名字/描述/参数完全可控**（逐字复刻）                                            | **可用（D10 采用）** |
+| `tool.definition` 改写      | `registry.ts:305-333` 组装目录时每工具触发，可改 `description`/`parameters`                                                                                                                                  | **id 不可改**；全局生效（无 sessionID/模型门控）；参数改了 execute 不匹配会 break | 不可用于 alias       |
 
 **dsh 原版 schema 来源**（`reference/deepseek-harness/packages/fs/
 tool-str-replace-editor/src/index.ts`）：
@@ -445,9 +447,12 @@ seeded 规则（`client.session.update` merge，**D10 修订：严格 minimal �
 解锁（merge 追加，**D6/D7 round-3 修订：不用 allow \*；round-7 改名**）：
 
 ```ts
-[...agent.permission, ...sessionDenies,
- {permission: 'str_replace_editor', pattern: '*', action: 'deny'}, // D10：隐藏插件工具
- {permission: '__dsv4_stage__', pattern: 'unsealed', action: 'allow'}];
+[
+  ...agent.permission,
+  ...sessionDenies,
+  {permission: 'str_replace_editor', pattern: '*', action: 'deny'}, // D10：隐藏插件工具
+  {permission: '__dsv4_stage__', pattern: 'unsealed', action: 'allow'},
+];
 // agent ruleset（client.app.agents() 取）在前；sessionDenies = session.permission 中
 // action==="deny" 的规则（排除插件自己的 deny *）；哨兵换为 unsealed（防重复解锁）
 ```
@@ -457,8 +462,8 @@ seeded 规则（`client.session.update` merge，**D10 修订：严格 minimal �
 - `findLast` 语义下，deny 规则在前、白名单 allow 在后 → 白名单可见且免询问；
   解锁追加的 agent ruleset 在最后 → 覆盖 seeded 全部规则，**恢复到 opencode
   自然权限状态**：build 的 defaults 是 `{"*":"allow", doom_loop:"ask",
-  question/plan_enter:"deny", external_directory:"ask"+白名单allow, read env
-  "ask"}`（`agent.ts:119-136`）→ build 会话解锁后等价全量开放；explore 的
+question/plan_enter:"deny", external_directory:"ask"+白名单allow, read env
+"ask"}`（`agent.ts:119-136`）→ build 会话解锁后等价全量开放；explore 的
   ruleset 是 `{"*":"deny", grep/glob/list/bash/webfetch/websearch/read:"allow"}`
   → 解锁后保持只读；自定义 agent 的 ask/deny/allow 全部保留。
 - **派生 deny 重排**：subagent 创建时 session.permission 自带 task/todowrite/
@@ -481,13 +486,13 @@ seeded 规则（`client.session.update` merge，**D10 修订：严格 minimal �
 
 ### 5.3 Hook 职责
 
-| hook                                 | 职责                                                                                 |
-| ------------------------------------ | ------------------------------------------------------------------------------------ |
-| `config(cfg)`                        | （可选）注入/补全 agent 定义：Minimal persona + 初始 permission；记录用户配置        |
+| hook                                 | 职责                                                                                                                                                                                                                                                                                                                                                                        |
+| ------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `config(cfg)`                        | （可选）注入/补全 agent 定义：Minimal persona + 初始 permission；记录用户配置                                                                                                                                                                                                                                                                                               |
 | `chat.message`                       | 统一状态机入口（**round-7：解锁/判别收敛到此，无需信号 hook**）：await `session.get` 判定状态（含 `parentID` 判 subagent）→ pristine 则注入 + seeded；seeded/unsealed 则扫边界后信号 → 解锁（追加 agent ruleset + 哨兵 unsealed）、判特征（N=3，任一符合 → 哨兵 verified，全不符 → giveup）；注入判定"历史无幂等标记即注入"（含 compaction 重注入）；探针失败 → 按 key 旁路 |
-| `experimental.chat.system.transform` | 门控命中时把 `output.system` 整体替换为**纯 Minimal persona**（所有 agent 无差别；原 system 全部内容已作为 user part prepend 注入首轮）；探针会话 → 捕获 + throw |
-| `experimental.session.compacting`    | 回退：追加 `deny *` + minimal 对 + compactionTools + 哨兵 seeded（重注入 + 重判别由 chat.message 自然完成） |
-| `event`（`session.created`）         | （可选，识别 subagent 的辅助路径；推荐直接 `session.get` 查 parentID）             |
+| `experimental.chat.system.transform` | 门控命中时把 `output.system` 整体替换为**纯 Minimal persona**（所有 agent 无差别；原 system 全部内容已作为 user part prepend 注入首轮）；探针会话 → 捕获 + throw                                                                                                                                                                                                            |
+| `experimental.session.compacting`    | 回退：追加 `deny *` + minimal 对 + compactionTools + 哨兵 seeded（重注入 + 重判别由 chat.message 自然完成）                                                                                                                                                                                                                                                                 |
+| `event`（`session.created`）         | （可选，识别 subagent 的辅助路径；推荐直接 `session.get` 查 parentID）                                                                                                                                                                                                                                                                                                      |
 
 > round-7：`tool.execute.before` / `message.updated` 不再承担信号职责——信号
 > （assistant 消息/工具调用）本就持久化在历史里，chat.message 每轮扫描即可
@@ -552,7 +557,7 @@ agent ruleset（`client.app.agents()` 取）+ session deny；提供 include/excl
 4. **seeded 期白名单工具不触发 ask**（行为说明，非缺陷）：首轮内 bash/
    str_replace_editor 直接执行不询问；解锁后按 agent ruleset 恢复 ask。
 5. **`client.session.get` SDK 类型缺口**：wire 返回含 `permission/agent/model/
-   parentID`，但 SDK 类型未声明，需 `as any`（技术债，无用户感知）。
+parentID`，但 SDK 类型未声明，需 `as any`（技术债，无用户感知）。
 6. **规则只增不减（append-only）**：seeded/解锁/compaction 回退均追加；
    无热加载前提下用户无感知；compaction 回退靠追加新 deny * + 新哨兵 seeded
    覆盖（取代旧 unsealed/verified）。

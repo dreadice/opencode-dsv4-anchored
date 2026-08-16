@@ -1,134 +1,146 @@
-import { PROBE_THROW_MESSAGE } from "../src/probe.ts"
-import type { Rule } from "../src/stage.ts"
+import {PROBE_THROW_MESSAGE} from '@/probe';
+import type {Rule} from '@/stage';
 
 export type FakeSession = {
-  id: string
-  directory: string
-  parentID?: string
-  agent: string
-  model: { providerID: string; modelID: string }
-  permission: Rule[]
-  title?: string
-}
+  id: string;
+  directory: string;
+  parentID?: string;
+  agent: string;
+  model: {providerID: string; modelID: string};
+  permission: Rule[];
+  title?: string;
+};
 
 export type FakeMessage = {
-  info: { id: string; role: string }
-  parts: Array<{ type: string; [k: string]: unknown }>
-}
+  info: {id: string; role: string};
+  parts: Array<{type: string; [k: string]: unknown}>;
+};
 
 export type FakeAgent = {
-  id: string
-  prompt: string
-  permission: Rule[]
-}
+  id: string;
+  prompt: string;
+  permission: Rule[];
+};
 
-export type FakeLog = { msg: string; level?: string; [k: string]: unknown }
+export type FakeLog = {msg: string; level?: string; [k: string]: unknown};
 
 export type FakeClient = {
   session: {
-    get(path: { id: string }): Promise<FakeSession>
-    update(path: { id: string }, body: { permission?: Rule[]; title?: string }): Promise<FakeSession>
-    messages(path: { id: string }): Promise<FakeMessage[]>
-    create(opts: { query?: { directory?: string }; body?: { title?: string } }): Promise<{ id: string }>
-    prompt(path: { id: string }, body: unknown): Promise<unknown>
-    delete(path: { id: string }): Promise<void>
-  }
+    get(path: {id: string}): Promise<FakeSession>;
+    update(
+      path: {id: string},
+      body: {permission?: Rule[]; title?: string}
+    ): Promise<FakeSession>;
+    messages(path: {id: string}): Promise<FakeMessage[]>;
+    create(opts: {
+      query?: {directory?: string};
+      body?: {title?: string};
+    }): Promise<{id: string}>;
+    prompt(opts: {path: {id: string}; body?: unknown}): Promise<unknown>;
+    delete(opts: {path: {id: string}}): Promise<void>;
+  };
   app: {
-    agents(): Promise<FakeAgent[]>
-    log(msg: string, opts?: { level?: string; [k: string]: unknown }): void
-  }
+    agents(): Promise<FakeAgent[]>;
+    log(msg: string, opts?: {level?: string; [k: string]: unknown}): void;
+  };
   config: {
-    get(): Promise<Record<string, never>>
-  }
-  _logs: FakeLog[]
-  _sessions: Map<string, FakeSession>
-  _messages: Map<string, FakeMessage[]>
-  _probeCalls: Array<{ id: string; body: unknown }>
-  _probeHandler: ((id: string, body: unknown) => Promise<never>) | undefined
-  setProbeHandler(h: (id: string, body: unknown) => Promise<never>): void
-}
+    get(): Promise<Record<string, never>>;
+  };
+  _logs: FakeLog[];
+  _sessions: Map<string, FakeSession>;
+  _messages: Map<string, FakeMessage[]>;
+  _probeCalls: Array<{id: string; body: unknown}>;
+  _probeHandler: ((id: string, body: unknown) => Promise<never>) | undefined;
+  setProbeHandler(h: (id: string, body: unknown) => Promise<never>): void;
+};
 
 export const BUILD_AGENT: FakeAgent = {
-  id: "build",
-  prompt: "You are a helpful software engineer assistant.",
+  id: 'build',
+  prompt: 'You are a helpful software engineer assistant.',
   permission: [
-    { permission: "*", pattern: "*", action: "allow" },
-    { permission: "doom_loop", pattern: "*", action: "ask" },
+    {permission: '*', pattern: '*', action: 'allow'},
+    {permission: 'doom_loop', pattern: '*', action: 'ask'},
   ],
-}
+};
 
 export const EXPLORE_AGENT: FakeAgent = {
-  id: "explore",
-  prompt: "You are a read-only explorer.",
+  id: 'explore',
+  prompt: 'You are a read-only explorer.',
   permission: [
-    { permission: "*", pattern: "*", action: "deny" },
-    { permission: "read", pattern: "*", action: "allow" },
-    { permission: "glob", pattern: "*", action: "allow" },
-    { permission: "grep", pattern: "*", action: "allow" },
-    { permission: "bash", pattern: "*", action: "allow" },
+    {permission: '*', pattern: '*', action: 'deny'},
+    {permission: 'read', pattern: '*', action: 'allow'},
+    {permission: 'glob', pattern: '*', action: 'allow'},
+    {permission: 'grep', pattern: '*', action: 'allow'},
+    {permission: 'bash', pattern: '*', action: 'allow'},
   ],
-}
+};
 
-export function createFakeClient(opts?: { model?: { providerID: string; modelID: string } }): FakeClient {
-  const model = opts?.model ?? { providerID: "opencode", modelID: "deepseek-v4-flash-free" }
-  const sessions = new Map<string, FakeSession>()
-  const messages = new Map<string, FakeMessage[]>()
-  const logs: FakeLog[] = []
-  const probeCalls: Array<{ id: string; body: unknown }> = []
-  let probeHandler: FakeClient["_probeHandler"]
+export function createFakeClient(opts?: {
+  model?: {providerID: string; modelID: string};
+}): FakeClient {
+  const model = opts?.model ?? {
+    providerID: 'opencode',
+    modelID: 'deepseek-v4-flash-free',
+  };
+  const sessions = new Map<string, FakeSession>();
+  const messages = new Map<string, FakeMessage[]>();
+  const logs: FakeLog[] = [];
+  const probeCalls: Array<{id: string; body: unknown}> = [];
+  let probeHandler: FakeClient['_probeHandler'];
 
   const session = (id: string): FakeSession => {
-    const s = sessions.get(id)
-    if (!s) throw new Error(`fake: session not found: ${id}`)
-    return s
-  }
+    const s = sessions.get(id);
+    if (!s) throw new Error(`fake: session not found: ${id}`);
+    return s;
+  };
 
   return {
     session: {
-      async get({ id }) {
-        return session(id)
+      async get({id}) {
+        return session(id);
       },
-      async update({ id }, body) {
-        const s = session(id)
-        if (body.permission) s.permission = [...s.permission, ...body.permission]
-        if (body.title !== undefined) s.title = body.title
-        return s
+      async update({id}, body) {
+        const s = session(id);
+        if (body.permission)
+          s.permission = [...s.permission, ...body.permission];
+        if (body.title !== undefined) s.title = body.title;
+        return s;
       },
-      async messages({ id }) {
-        return messages.get(id) ?? []
+      async messages({id}) {
+        return messages.get(id) ?? [];
       },
-      async create({ query, body }) {
-        const id = `ses_probe_${sessions.size + 1}`
+      async create({query, body}) {
+        const id = `ses_probe_${sessions.size + 1}`;
         sessions.set(id, {
           id,
-          directory: query?.directory ?? "/proj",
-          agent: "build",
+          directory: query?.directory ?? '/proj',
+          agent: 'build',
           model,
           permission: [],
           title: body?.title,
-        })
-        return { id }
+        });
+        return {id};
       },
-      async prompt({ id }, body) {
-        probeCalls.push({ id, body })
-        if (probeHandler) return probeHandler(id, body)
-        throw new Error(PROBE_THROW_MESSAGE)
+      async prompt({path, body}) {
+        probeCalls.push({id: path.id, body});
+        if (probeHandler) return probeHandler(path.id, body);
+        throw new Error(PROBE_THROW_MESSAGE);
       },
-      async delete({ id }) {
-        sessions.delete(id)
+      async delete({path}) {
+        sessions.delete(path.id);
       },
     },
     app: {
       async agents() {
-        return [BUILD_AGENT, EXPLORE_AGENT]
+        return [BUILD_AGENT, EXPLORE_AGENT];
       },
       log(msg, opts) {
-        logs.push({ msg, ...opts })
+        logs.push({msg, ...opts});
       },
     },
     config: {
       async get() {
-        return {}
+        return {};
       },
     },
     _logs: logs,
@@ -137,43 +149,46 @@ export function createFakeClient(opts?: { model?: { providerID: string; modelID:
     _probeCalls: probeCalls,
     _probeHandler: undefined,
     setProbeHandler(h) {
-      probeHandler = h
+      probeHandler = h;
     },
-  }
+  };
 }
 
 /** 建一个含指定 permission 的会话（默认 build agent + flash-free）。 */
 export function addSession(
   client: FakeClient,
-  opts: Partial<FakeSession> & { id: string },
+  opts: Partial<FakeSession> & {id: string}
 ): FakeSession {
   const s: FakeSession = {
     id: opts.id,
-    directory: opts.directory ?? "/proj",
-    agent: opts.agent ?? "build",
-    model: opts.model ?? { providerID: "opencode", modelID: "deepseek-v4-flash-free" },
+    directory: opts.directory ?? '/proj',
+    agent: opts.agent ?? 'build',
+    model: opts.model ?? {
+      providerID: 'opencode',
+      modelID: 'deepseek-v4-flash-free',
+    },
     permission: opts.permission ?? [],
     parentID: opts.parentID,
     title: opts.title,
-  }
-  client._sessions.set(s.id, s)
-  return s
+  };
+  client._sessions.set(s.id, s);
+  return s;
 }
 
-export const reasoning = (text: string) => ({ type: "reasoning", text })
-export const textPart = (text: string) => ({ type: "text", text })
-export const toolPart = (tool: string) => ({ type: "tool", tool })
+export const reasoning = (text: string) => ({type: 'reasoning', text});
+export const textPart = (text: string) => ({type: 'text', text});
+export const toolPart = (tool: string) => ({type: 'tool', tool});
 export const compactionPart = (tailStartId?: string) => ({
-  type: "compaction",
-  ...(tailStartId ? { tail_start_id: tailStartId } : {}),
-})
+  type: 'compaction',
+  ...(tailStartId ? {tail_start_id: tailStartId} : {}),
+});
 
 export const assistant = (id: string, parts: unknown[]): FakeMessage => ({
-  info: { id, role: "assistant" },
-  parts: parts as FakeMessage["parts"],
-})
+  info: {id, role: 'assistant'},
+  parts: parts as FakeMessage['parts'],
+});
 
 export const user = (id: string, parts: unknown[]): FakeMessage => ({
-  info: { id, role: "user" },
-  parts: parts as FakeMessage["parts"],
-})
+  info: {id, role: 'user'},
+  parts: parts as FakeMessage['parts'],
+});

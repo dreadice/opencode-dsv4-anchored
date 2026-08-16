@@ -107,35 +107,35 @@ chat.message（真实会话 S，首轮）
   - 行为 = 完全原生 opencode，插件对该 key 透明
 - TTL 过后或跨天 → 重试探针。
 - 失败标记可展示：状态文件 `probe-cache.json` 含 `{key, status:"failed",
-  error, ts}` 条目，可 cat 查看；日志打 bypass 事件。
+error, ts}` 条目，可 cat 查看；日志打 bypass 事件。
 - **自组装 fallback 取消**：不再维护 ~95% 忠实的近似组装。
 
 ## 5. 阶段状态机（哨兵 + DB 持久化）
 
 无内存状态，靠 session permission 规则判定：
 
-| 阶段 | 判定 | 行为 |
-| --- | --- | --- |
-| pristine | 无哨兵规则 | `chat.message` ensure → 注入 + seeded（追加规则） |
-| seeded | 哨兵 `seeded` | 注入成功；解锁信号（边界后 assistant 消息/工具调用）→ 解锁；判别进行中（N=3 轮） |
-| unsealed | 哨兵 `unsealed` | 已解锁（seeded 的内部变体，防重复解锁）；判别进行中 |
-| verified | 哨兵 `verified` | 判别通过（模型输出特征达成，成功标记）；不再解锁/判别 |
-| bypass | key failed（缓存） | 全部 hook 原样放行（key 级判定，无哨兵） |
+| 阶段     | 判定               | 行为                                                                             |
+| -------- | ------------------ | -------------------------------------------------------------------------------- |
+| pristine | 无哨兵规则         | `chat.message` ensure → 注入 + seeded（追加规则）                                |
+| seeded   | 哨兵 `seeded`      | 注入成功；解锁信号（边界后 assistant 消息/工具调用）→ 解锁；判别进行中（N=3 轮） |
+| unsealed | 哨兵 `unsealed`    | 已解锁（seeded 的内部变体，防重复解锁）；判别进行中                              |
+| verified | 哨兵 `verified`    | 判别通过（模型输出特征达成，成功标记）；不再解锁/判别                            |
+| bypass   | key failed（缓存） | 全部 hook 原样放行（key 级判定，无哨兵）                                         |
 
 - 哨兵 = 插件自造规则 `{permission:"__dsv4_stage__", pattern:<阶段>,
-  action:"allow"}`（不匹配任何真实工具，惰性；`findLast` 取阶段）。
+action:"allow"}`（不匹配任何真实工具，惰性；`findLast` 取阶段）。
 - seeded 规则（**D10：严格 minimal 工具对**）：
   `[{permission:"__dsv4_stage__",pattern:"seeded",action:"allow"},
-   {permission:"*",pattern:"*",action:"deny"},
-   {permission:"bash",pattern:"*",action:"allow"},
-   {permission:"str_replace_editor",pattern:"*",action:"allow"},
-   {permission:"external_directory",pattern:"*",action:"allow"}]`
+ {permission:"*",pattern:"*",action:"deny"},
+ {permission:"bash",pattern:"*",action:"allow"},
+ {permission:"str_replace_editor",pattern:"*",action:"allow"},
+ {permission:"external_directory",pattern:"*",action:"allow"}]`
   （白名单可配置，默认 `["bash","str_replace_editor"]`；`deny *` 已隐藏内置
   edit/write/apply_patch 等全部非白名单工具，无需额外 deny——
   `disabled()` 只在 `pattern==="*" && action==="deny"` 时隐藏工具）。
 - 解锁（原 promote；D2/D6/D7 修订 + D10）：
   `[...agent.permission, ...sessionDenies(排除插件自身 deny *),
-   {permission:"str_replace_editor",pattern:"*",action:"deny"}, 哨兵 unsealed]`
+ {permission:"str_replace_editor",pattern:"*",action:"deny"}, 哨兵 unsealed]`
   ——merge 追加语义（`session.update` append-only），build 的 `*: allow` 等价
   全量开放；explore/自定义 agent 的 ask/deny 保留；subagent 的 task deny 保住；
   **末尾追加 `str_replace_editor: deny` 隐藏插件工具**（findLast 命中），目录
@@ -199,7 +199,7 @@ chat.message（真实会话 S，首轮）
 ### 7.1 app.log 机制（源码核实）
 
 - `client.app.log` = HTTP `POST /log` → Effect `logDebug/logInfo/logWarning/
-  logError`（`handlers/control.ts:28-39`）；级别仅 debug/info/warn/error，
+logError`（`handlers/control.ts:28-39`）；级别仅 debug/info/warn/error，
   **无 trace**，debug 即最细。
 - 默认只写文件（`~/.local/share/opencode/log/opencode.log`）；
   `OPENCODE_PRINT_LOGS=1` 才额外打 stderr（`core/observability/logging.ts:68`）。
@@ -220,18 +220,18 @@ chat.message（真实会话 S，首轮）
 
 ### 7.3 日志事件清单
 
-| 事件 | 级别 | 摘要字段（info） | 全量字段（debug） |
-| --- | --- | --- | --- |
-| chat.message | info | sessionID、stage、gating、injectSource(inject/bypass/none)、injectLen、visibleTools | 注入全文 |
-| probe.start | info | key、sessionID | — |
-| probe.success | info | key、sysLen、sysHash | 捕获的 system 全文 |
-| probe.fail | info | key、error、TTL 生效 | 完整 error stack |
-| bypass | warn | key、reason | — |
-| system.transform | info | sessionID、gating、action(replace/passthrough)、beforeLen、afterLen、beforeHash | 替换前后全文 |
-| unlock | info | sessionID、agentRuleset 条数、排除 denies、哨兵 unsealed | 完整 ruleset 追加列表 |
-| verify.passed | info | sessionID、判别消息 id、特征摘要（首行、letMe 计数） | 判别消息全文 |
-| verify.giveup | warn | sessionID、已检轮数 N | — |
-| compaction.rollback | warn | sessionID | — |
+| 事件                | 级别 | 摘要字段（info）                                                                    | 全量字段（debug）     |
+| ------------------- | ---- | ----------------------------------------------------------------------------------- | --------------------- |
+| chat.message        | info | sessionID、stage、gating、injectSource(inject/bypass/none)、injectLen、visibleTools | 注入全文              |
+| probe.start         | info | key、sessionID                                                                      | —                     |
+| probe.success       | info | key、sysLen、sysHash                                                                | 捕获的 system 全文    |
+| probe.fail          | info | key、error、TTL 生效                                                                | 完整 error stack      |
+| bypass              | warn | key、reason                                                                         | —                     |
+| system.transform    | info | sessionID、gating、action(replace/passthrough)、beforeLen、afterLen、beforeHash     | 替换前后全文          |
+| unlock              | info | sessionID、agentRuleset 条数、排除 denies、哨兵 unsealed                            | 完整 ruleset 追加列表 |
+| verify.passed       | info | sessionID、判别消息 id、特征摘要（首行、letMe 计数）                                | 判别消息全文          |
+| verify.giveup       | warn | sessionID、已检轮数 N                                                               | —                     |
+| compaction.rollback | warn | sessionID                                                                           | —                     |
 
 统一前缀 `dsv4-anchored`，用 `client.app.log(msg, {level, ...fields})` 结构化解构。
 
@@ -246,11 +246,11 @@ chat.message（真实会话 S，首轮）
 
 ### 8.2 配置项（插件 options）
 
-| 项 | 默认 | 说明 |
-| --- | --- | --- |
-| `models` | `["deepseek*v4*"]` | 门控模型通配符 |
-| `whitelist` | `["bash","str_replace_editor"]` | seeded 期白名单（**D10：严格 minimal 工具对**） |
-| `verify.n` | `3` | 判别窗口（常量） |
+| 项             | 默认                                                  | 说明                                                                                                 |
+| -------------- | ----------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| `models`       | `["deepseek*v4*"]`                                    | 门控模型通配符                                                                                       |
+| `whitelist`    | `["bash","str_replace_editor"]`                       | seeded 期白名单（**D10：严格 minimal 工具对**）                                                      |
+| `verify.n`     | `3`                                                   | 判别窗口（常量）                                                                                     |
 | `verify.terms` | 英文：we `["we need","we"]`、let `["let me","let's"]` | 轨迹标记词表；中文实验词表：we `["我们"]`、let `["让我","我来","我先"]`（不稳定，标记缺失即 giveup） |
 
 ### 8.2.1 白名单 permission 名 ↔ 工具映射
@@ -258,13 +258,13 @@ chat.message（真实会话 S，首轮）
 白名单按 **permission 名**配置（源码 `permission/index.ts:204-213`
 `disabled()`）：
 
-| permission 名 | 覆盖工具 | 说明 |
-| --- | --- | --- |
-| `bash` | `bash` | opencode 内置，id 与 dsh minimal 同名 |
-| `str_replace_editor` | `str_replace_editor` | 插件注册的自定义工具（§8.2.2） |
-| `edit` | `edit`、`write`、`apply_patch` | 内置编辑族（seeded 期默认**不放行**） |
-| `read` | `read`、`read_mcp_resource`、`list_mcp_resources`、`list_mcp_resource_templates` | — |
-| 其他 | 同名工具 | — |
+| permission 名        | 覆盖工具                                                                         | 说明                                  |
+| -------------------- | -------------------------------------------------------------------------------- | ------------------------------------- |
+| `bash`               | `bash`                                                                           | opencode 内置，id 与 dsh minimal 同名 |
+| `str_replace_editor` | `str_replace_editor`                                                             | 插件注册的自定义工具（§8.2.2）        |
+| `edit`               | `edit`、`write`、`apply_patch`                                                   | 内置编辑族（seeded 期默认**不放行**） |
+| `read`               | `read`、`read_mcp_resource`、`list_mcp_resources`、`list_mcp_resource_templates` | —                                     |
+| 其他                 | 同名工具                                                                         | —                                     |
 
 默认 `["bash","str_replace_editor"]` 首轮模型可见 = 恰好两个工具，与 dsh
 minimal 的 `['bash','str_replace_editor']` 集合一致（dsh e2e 断言
@@ -275,20 +275,20 @@ minimal 的 `['bash','str_replace_editor']` 集合一致（dsh e2e 断言
 - **注册**：`Hooks.tool = { str_replace_editor: tool({...}) }`（`registry.ts:196-199`
   → `fromPlugin`，id = 对象 key；zod args → jsonSchema 发给 LLM）。
 - **schema 逐字复刻 dsh 原版**（`tool-str-replace-editor/src/index.ts:19-30,
-  425-458`）：描述 = DEFAULT_DESCRIPTION 原文；参数 = `command`（enum
+425-458`）：描述 = DEFAULT_DESCRIPTION 原文；参数 = `command`（enum
   view/create/str_replace/insert，必填）+ `path`（必填，绝对路径）+
   `file_text`/`insert_line`/`new_str`/`old_str`/`view_range`。
 - **execute 自实现**：view = 读文件/目录（cat -n 行号、view_range、16000 截断
-  + `<response clipped>` 标记）；create = 写文件（已存在报错）；str_replace =
-  唯一匹配替换（多/无匹配报错）；insert = 行插入。
+  - `<response clipped>` 标记）；create = 写文件（已存在报错）；str_replace =
+    唯一匹配替换（多/无匹配报错）；insert = 行插入。
 - **解锁时隐藏**：解锁规则（seeded 阶段信号出现时追加）末尾带
   `str_replace_editor: deny` → 目录恢复 opencode 自然状态（用户："只是
   system用一下，后边隐藏就行"）。
 - **降级点**：无 LSP 冲突检测/格式化（内置 edit 的能力，seeded 期用不上）。
-| `agents.include` / `agents.exclude` | 全部 | 自定义 agent 通配符过滤（D7） |
-| `probe.ttlMs` | 300000 | 探针失败旁路 TTL |
-| `probe.cacheDir` | `~/.local/share/opencode/dsv4-anchored/` | 缓存与状态文件目录 |
-| `log.level` | 跟随 OPENCODE_LOG_LEVEL | 预留显式覆盖 |
+  | `agents.include` / `agents.exclude` | 全部 | 自定义 agent 通配符过滤（D7） |
+  | `probe.ttlMs` | 300000 | 探针失败旁路 TTL |
+  | `probe.cacheDir` | `~/.local/share/opencode/dsv4-anchored/` | 缓存与状态文件目录 |
+  | `log.level` | 跟随 OPENCODE_LOG_LEVEL | 预留显式覆盖 |
 
 ### 8.3 启用 debug 日志
 

@@ -1,7 +1,7 @@
 export type HistoryMessage = {
-  info: unknown
-  parts: Array<{ type: string; state?: unknown }>
-}
+  info: unknown;
+  parts: Array<{type: string; state?: unknown}>;
+};
 
 /**
  * 压缩边界（epoch）：历史中最后一条含 `CompactionPart`（`type:"compaction"`）
@@ -10,9 +10,9 @@ export type HistoryMessage = {
  * 边界（research round-6）。
  */
 export function lastCompactionBoundary(messages: HistoryMessage[]): number {
-  let last = -1
+  let last = -1;
   for (let i = 0; i < messages.length; i++) {
-    if (messages[i]!.parts.some((p) => p.type === "compaction")) last = i
+    if (messages[i]!.parts.some(p => p.type === 'compaction')) last = i;
   }
-  return last
+  return last;
 }

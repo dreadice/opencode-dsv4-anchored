@@ -46,10 +46,10 @@
   恒为受限目录，信号落库后请求 #2 起完整目录；判定收敛到 chat.message ensure
   扫历史，无需信号 hook）；**compaction 回退（round-5/6/7 修订）**：对齐 dsh
   compactionTools——回退 = minimal 对 + read/glob/grep/edit/todowrite/question
-  + 哨兵 `seeded`；**触发点 = `experimental.session.compacting` hook**（无
-  `session.compacted` 事件）；epoch 边界 = 历史最后一条 `CompactionPart` 之后；
-  **回退后自动重注入 + 重新判别**（round-6/7，用户确认）；
-  验证=插件内置日志+grep（可选抓包）
+  - 哨兵 `seeded`；**触发点 = `experimental.session.compacting` hook**（无
+    `session.compacted` 事件）；epoch 边界 = 历史最后一条 `CompactionPart` 之后；
+    **回退后自动重注入 + 重新判别**（round-6/7，用户确认）；
+    验证=插件内置日志+grep（可选抓包）
 - **D6**：subagent 独立处理（首轮 minimal+注入、自身信号解锁、解锁保留
   task/todowrite deny、父已验证不豁免）
 - **D7（Decided）**：自定义 agent 与默认 agent 完全同构（system=纯 minimal
@@ -59,16 +59,16 @@
   按 key 旁路**——不替换 system、不注入、不 seeded，行为完全原生；状态文件
   `probe-cache.json` 可展示；TTL 后/跨天重试
 - **D9（round-5）**：日志两级——info 摘要字段（长度/hash/前 100 字符/阶段/门控/
-   来源）、debug 完整字段（全文/ruleset 全量）；debug 短路 = 启动时读一次
-   `OPENCODE_LOG_LEVEL === "DEBUG"`，`debug()` 开头 return（避免每轮序列化+HTTP）；
-   fire-and-forget；`app.log` 机制研究见 research.md §4.10
+  来源）、debug 完整字段（全文/ruleset 全量）；debug 短路 = 启动时读一次
+  `OPENCODE_LOG_LEVEL === "DEBUG"`，`debug()` 开头 return（避免每轮序列化+HTTP）；
+  fire-and-forget；`app.log` 机制研究见 research.md §4.10
 - **D10（round-5）**：严格 minimal 工具对——插件注册自定义工具
-   `str_replace_editor`（`Hooks.tool`，名称/描述/参数逐字复刻 dsh 原版 schema，
-   见 research.md §4.11），bash 用内置（id 同名）；seeded 白名单
-   `["bash","str_replace_editor"]`，`deny *` 隐藏内置编辑族；**解锁时**末尾追加
-   `str_replace_editor: deny` 隐藏（"只是system用一下，后边隐藏就行"；
-   与 verified 无关，round-7 澄清）；
-   execute 自实现 view/create/str_replace/insert
+  `str_replace_editor`（`Hooks.tool`，名称/描述/参数逐字复刻 dsh 原版 schema，
+  见 research.md §4.11），bash 用内置（id 同名）；seeded 白名单
+  `["bash","str_replace_editor"]`，`deny *` 隐藏内置编辑族；**解锁时**末尾追加
+  `str_replace_editor: deny` 隐藏（"只是system用一下，后边隐藏就行"；
+  与 verified 无关，round-7 澄清）；
+  execute 自实现 view/create/str_replace/insert
 - **D11（round-5）**：首轮注入扰动风险备选——首轮 user 消息在場 AGENTS.md/
   技能目录（dsh 首轮剥离，issue #6：技能目录在场 0/9 vs 无 ~81%）；**默认保持
   完整注入**（信息不丢），实测判别不达标才启用**选择性剥离**（按稳定标记切段：
@@ -130,7 +130,7 @@ opencode 的 system 组装**（无渲染端点，见下）；**探针是唯一�
 6. **SDK 类型核实**（`node_modules/@opencode-ai/sdk/dist/gen/`）：
    - `SessionCreateData.body`：`{parentID?, title?}`；query `{directory?}`；
    - `SessionPromptData.body`：`{messageID?, model?{providerID,modelID}, agent?,
-     noReply?, system?, tools?, parts[]}`——**探针可指定与真实会话相同的
+noReply?, system?, tools?, parts[]}`——**探针可指定与真实会话相同的
      agent+model**；
    - `SessionUpdateData.body` 仅 `{title?}`（**permission 需 `as any`**，wire 的
      UpdatePayload 支持）；`session.update` 的 permission 是 **merge 追加**
@@ -183,12 +183,12 @@ opencode 的 system 组装**（无渲染端点，见下）；**探针是唯一�
 1. **工具可见性**：session permission ruleset 控制，`findLast` 后写覆盖
    （`.../permission/index.ts:204` `disabled()`）
    - seeded（D10 严格 minimal 对）：`[{permission:"__dsv4_stage__",
-     pattern:"seeded",action:"allow"}, {permission:"*",pattern:"*",action:"deny"},
-     {permission:"bash",pattern:"*",action:"allow"}, {permission:"str_replace_editor",
-     pattern:"*",action:"allow"}, {permission:"external_directory",pattern:"*",
-     action:"allow"}]`
+pattern:"seeded",action:"allow"}, {permission:"*",pattern:"*",action:"deny"},
+{permission:"bash",pattern:"*",action:"allow"}, {permission:"str_replace_editor",
+pattern:"*",action:"allow"}, {permission:"external_directory",pattern:"*",
+action:"allow"}]`
    - 解锁：`[...agent.permission, ...sessionDenies(排除插件自身 deny *),
-     {permission:"str_replace_editor",pattern:"*",action:"deny"}, 哨兵 unsealed]`
+{permission:"str_replace_editor",pattern:"*",action:"deny"}, 哨兵 unsealed]`
      （D10：末尾 deny 隐藏插件工具，目录恢复自然状态）
    - 工具→权限名映射（`:204`）：`edit/write/apply_patch`→`edit`，`read_mcp_*`→`read`
    - 白名单默认 `["bash","str_replace_editor"]`（D10 严格 minimal 对），可配置
@@ -219,7 +219,7 @@ opencode 的 system 组装**（无渲染端点，见下）；**探针是唯一�
 ### 阶段判定（无内存状态，靠 DB 持久化的 permission 规则 + 哨兵标记）
 
 - 阶段标记 = 插件自造哨兵规则 `{permission:"__dsv4_stage__", pattern:<阶段>,
-  action:"allow"}`（任意字符串，不匹配任何真实工具，惰性）；`findLast` 取阶段
+action:"allow"}`（任意字符串，不匹配任何真实工具，惰性）；`findLast` 取阶段
 - 无哨兵（pristine）→ 注入 + seeded（追加 `deny *` + 白名单 + 哨兵 seeded）
 - 哨兵 seeded / unsealed → 扫边界后信号 → 解锁（追加 agent ruleset + 哨兵
   unsealed，防重复解锁）；判别（N=3 窗口，任一符合 → 哨兵 verified）
@@ -384,9 +384,9 @@ opencode 的 system 组装**（无渲染端点，见下）；**探针是唯一�
 8. **晋升语义澄清**："晋升不是 system 设置后就有，是观察驱动的"——dsh 首次
    持久晋升信号（tool/call 或 assistant/message 先到为准）落库后才开放完整
    目录；请求 #1 恒 bootstrap、请求 #2 起完整目录。我们同构：`tool.execute.before`
-   + `message.updated` 事件 → promote → 下一请求生效（工具集在请求开始时
-   resolve，`request.ts:208`）。allow/deny 均为 `findLast` 后写覆盖
-   （`permission/index.ts:204-213`），promote 追加 deny 在末位必命中。
+   - `message.updated` 事件 → promote → 下一请求生效（工具集在请求开始时
+     resolve，`request.ts:208`）。allow/deny 均为 `findLast` 后写覆盖
+     （`permission/index.ts:204-213`），promote 追加 deny 在末位必命中。
 
 产出：`docs/design.md`（系统设计文档：目标/行为/探针/状态机/日志/alias 工具/
 使用/验证/限制/实现顺序）+ `docs/decisions.md` D5 修订/D11 + research.md

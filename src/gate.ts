@@ -1,12 +1,12 @@
 export function matchesModel(model: string, patterns: string[]): boolean {
-  if (patterns.length === 0) return false
-  return patterns.some((p) => wildcardToRegExp(p).test(model))
+  if (patterns.length === 0) return false;
+  return patterns.some(p => wildcardToRegExp(p).test(model));
 }
 
 function wildcardToRegExp(pattern: string): RegExp {
-  const escaped = pattern.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
-  const re = escaped.replace(/\\\*/g, ".*")
-  return new RegExp(`^${re}$`)
+  const escaped = pattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const re = escaped.replace(/\\\*/g, '.*');
+  return new RegExp(`^${re}$`);
 }
 
 /**
@@ -14,9 +14,11 @@ function wildcardToRegExp(pattern: string): RegExp {
  * 任一命中即通过——覆盖带/不带 provider 前缀两种形态。
  */
 export function gateModel(
-  model: { providerID: string; modelID: string },
-  patterns: string[],
+  model: {providerID: string; modelID: string},
+  patterns: string[]
 ): boolean {
-  const joined = `${model.providerID}/${model.modelID}`
-  return matchesModel(joined, patterns) || matchesModel(model.modelID, patterns)
+  const joined = `${model.providerID}/${model.modelID}`;
+  return (
+    matchesModel(joined, patterns) || matchesModel(model.modelID, patterns)
+  );
 }
