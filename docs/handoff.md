@@ -19,9 +19,13 @@ flash-free）、round-9 zero-anchored 时序定案（已落档，**代码未实�
   - 首轮注入任何内容（即使 stripPersona）→ 破坏 we 锚定
   - **splice 修复**：`output.system = [...]` 重赋值不生效（plugin.trigger 忽略
     返回值，request.ts 用局部数组引用）→ 必须 `splice` 原地改——已修复
-- 定案（D13，已写文档，**未实现**）：zero-anchored 锚定轮（0 工具 + 锚定消息
+- 定案（D13，已写文档，**代码未实现**）：zero-anchored 锚定轮（0 工具 + 锚定消息
   synthetic 隐藏）→ 真实消息推迟（pending 存盘）→ 锚定回复落库后 event 自动
   prompt 轮 2（user system 去 persona + 真实消息）→ 解锁 → 判别
+- **round-10（本会话）**：D13 设计再核实并修订——触发点 `message.updated` →
+  **`session.idle`**（busy 窗口会丢 runLoop，research.md §4.12 / decisions.md
+  D13 修订）；锚定消息不加 marker；ensure 补发方案定案；**文档已更新，
+  src 待实现**
 - 安装方式：`dist/index.js` → `.opencode/plugins/`（实测；配置字段 `plugin`
   单数；options 用 `plugin: [["路径", {options}]]` 数组形式）
 
@@ -264,7 +268,7 @@ action:"allow"}`（任意字符串，不匹配任何真实工具，惰性）；`
   （probe/bypass/none）、可见工具列表、判别状态
 - 用 `client.app.log`（结构化）或 console.log
 
-## 实现顺序建议（round-7 更新，详见 design.md §11）
+## 实现顺序建议（round-7 更新，round-10 补 D13 步骤，详见 design.md §11）
 
 1. 日志模块（两级 + debug 短路 + 事件清单）——其余模块的观测基础
 2. **str_replace_editor 工具注册（D10）**：`Hooks.tool` 注册，schema 逐字复刻
@@ -281,6 +285,14 @@ action:"allow"}`（任意字符串，不匹配任何真实工具，惰性）；`
    compactionTools + 哨兵 `seeded`；epoch 边界 = 最后一条 `CompactionPart`
    之后；**回退后自动重注入 + 重新判别**；实现时确认 `compaction.ts:480-608`
    落库细节影响扫描遍历）、resume re-sync、agent include/exclude 配置
+8. **D13 zero-anchored（round-10 定案，src 待实现）**：`pending.ts`（pending
+   存储：内存 Map + 磁盘 JSON + sending 防重集合）+ `round2.ts`（sendRound2：
+   轮 2 prompt = user system part（探针捕获→stripPersona，INJECT_MARKER，
+   synthetic）+ pending 真实 parts；显式 agent+model；不带 tools；发送前清
+   pending，失败恢复）+ `core.ts` ensure 锚定流（首轮替换 parts + 推迟 /
+   重锚定 / 悬挂补发（当前消息正常放行））+ `index.ts` event hook
+   （`session.idle` → sendRound2，probeSessions 跳过）+ 默认配置 zero 形态
+   （whitelist `[]`、anchorText 默认 dsh 原文）+ ZH_TERMS 移除
 
 ## 已知限制（收敛后，详见 research.md §6）
 
@@ -514,14 +526,47 @@ decisions.md 术语表 + D5 round-7 修订 + D12、research.md §5.1/§5.2/§5.3
 
 ## 待办（新上下文）
 
-1. 实现 D13 时序：pending 存储（存盘）+ chat.message 首轮替换 + `event`
-   message.updated 自动 prompt 轮 2 + ensure 补发 + 测试（fake client 扩展
-   event/prompt 模拟）
+1. 实现 D13 时序：pending 存储（存盘）+ chat.message 首轮替换 + **event
+   （session.idle）** 自动 prompt 轮 2 + ensure 补发 + 测试（fake client 扩展
+   prompt 持久化模拟）——**设计已定案（round-10），文档已更新，src 待实现**
 2. 默认配置定 zero 形态（`whitelist: []` + `anchorText` 默认启用 + 注入
    默认去 persona）
 3. docs 收尾（testing.md TC-3 结果回填 round-9；plan.md 进度；P4 结论：
-   官方端点 v4-pro 0 工具才 we）
+   官方端点 v4-pro 0 工具才 we）——**本会话已完成**
 4. 真机验证 D13 全链路（锚定轮 we → 自动轮 2 → 解锁 → 判别）
-5. **移除中文词表 ZH_TERMS**（round-9 确认）：zero 方案锚定消息为固定英文，
-   锚定回复（判别对象）恒英文 → 中文实验词表（`我们`/`让我`/`我来`/`我先`）
-   用不到——后续实现时从 verify.ts/design/testing/decisions 一并去掉
+5. **移除中文词表 ZH_TERMS**（round-9 确认）——**本会话随实现一起做**（verify.ts
+   / design / testing / decisions 已同步更新）
+
+## 本轮讨论留档（round-10，2026-08-16）：D13 实现前源码核实与修订
+
+实现 D13 前按文档重读源码，发现并定案：
+
+1. **`message.updated` 触发轮 2 不安全（busy 窗口）**：`message.updated` 在
+   run 仍在 Running 时发布（processor.ts:456/596 → session.ts:633）；此时
+   `session.prompt` 的 `ensureRunning` 在 busy 下**丢弃新 runLoop**——
+   runner.ts:120-122 `return [awaitDone(st.run.done), st]`（等当前 run 完成后
+   返回其结果，不排队不报错）→ 轮 2 消息入库但永不执行（静默丢失）。
+   **改为 `session.idle` 触发**（runner.ts:70-81 → run-state.ts:60-63 →
+   status.ts:43 publish Event.Idle，run 完全结束后发布，无竞态）。
+2. **`session.prompt` 省略 agent/model 用默认 agent**（createUserMessage
+   prompt.ts:637-641 `input.agent ?? agents.defaultInfo()`）→ 轮 2 必须显式传
+   会话 agent+model。
+3. **pending parts 重发安全**：chat.message 触发时 parts 已 resolve
+   （prompt.ts:1005-1014），resolvePart 二次处理 data:/file: URL 幂等
+   （prompt.ts:700+），messageID/sessionID 被 assign 覆盖、part id 保留——
+   首轮替换后原 part 从未落库 → id 复用无冲突。
+4. **锚定消息不加 ANCHOR_MARKER**：round-9"首轮注入任何内容破坏 we"→ 锚定
+   part = 纯 dsh 原文；锚定状态判定 = pending 存在性 + 边界后 assistant 消息
+   推导（不再扫标记）。
+5. **ensure 补发方案 A**：pending 存在 + 锚定回复已落库 → 补发轮 2（pending
+   旧消息 + user system），**当前消息正常放行**——不推迟、不 placeholder
+   （避免当前消息变空消息 + 空 user run 的坏局面；补发内容作为历史上下文
+   可见，当前消息自身 run 正常处理）。
+6. **重锚定**：pending 存在 + 回复未落库（锚定中断/重试）→ 当前 parts 追加
+   pending、替换为锚定消息。
+7. **默认配置 zero 形态定案**：`whitelist: []`、`anchorText` 默认 dsh 原文、
+   注入默认 stripPersona；ZH_TERMS 移除（锚定回复恒英文）。
+
+产出：research.md §4.12、decisions.md D13 修订 + 机制表、design.md §2/§4.5/
+§5/§6/§7.3/§8.2/§9、handoff.md 本节、plan.md P3/P4、testing.md TC-2-25~32 +
+TC-3-11。

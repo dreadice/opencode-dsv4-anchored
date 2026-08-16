@@ -398,6 +398,27 @@ header tools 数量异常），则启用备选；达标则维持现状。
 **影响**：首轮多一轮模型调用（锚定轮），对齐 dsh whoami 的代价；TUI 轮 1
 用户消息隐藏、轮 2 真实任务自动出现（系统代发）。
 
+**D13 修订（round-10，实现前源码核实）**：
+
+1. **轮 2 触发点 `message.updated` → `session.idle`**：`message.updated` 在 run
+   仍在 Running 时发布（processor.ts:456/596），此时 `session.prompt` 的
+   `ensureRunning` 在 busy 下**丢弃新 runLoop**（runner.ts:120-122
+   `[awaitDone(st.run.done), st]`，不排队不报错）→ 轮 2 消息入库但永不执行。
+   `session.idle`（run 结束后发布，status.ts:43）无竞态 → 用它触发。
+2. **锚定消息不加 `ANCHOR_MARKER`**：round-9 实测"首轮注入任何内容破坏 we 锚
+   定"→ 锚定 part 文本 = dsh 原文纯净；锚定状态判定 = **pending 存在性 + 边界
+   后 assistant 消息**推导（替换原"扫 ANCHOR_MARKER"）。
+3. **重锚定**：pending 存在 + 边界后无 assistant 消息（锚定中断/失败/重试）→
+   当前消息 parts 追加 pending、parts 替换为锚定消息重试。
+4. **ensure 补发（重启悬挂）**：pending 存在 + 边界后已有 assistant 消息 →
+   补发轮 2；**当前消息正常放行**（不推迟、不 placeholder——避免当前消息
+   变空消息 + 空 user run 的坏局面；pending 旧内容经轮 2 作为历史可见）。
+5. **轮 2 prompt 显式传 agent+model**：`createUserMessage` 省略时用默认 agent
+   （prompt.ts:637-641）→ 语义漂移。
+6. **默认配置 zero 形态**：`whitelist: []`（0 工具）+ `anchorText` 默认启用
+   （dsh 原文）+ 注入默认 stripPersona。
+7. **ZH_TERMS 移除**：锚定消息/回复恒英文，中文实验词表不再需要。
+
 | 机制                                                                                                                                                | 来源                                                                       |
 | --------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
 | 工具可见性由 permission ruleset 控制，`findLast` 后写覆盖；`merge` = 按序拼接，agent 规则在前、session 规则在后                                     | `reference/opencode/.../permission/index.ts:28,204`；`session/tools.ts:87` |
@@ -425,6 +446,7 @@ header tools 数量异常），则启用备选；达标则维持现状。
 | `experimental.chat.system.transform` 的 input 含 `model`，可按模型门控；触发时 system 已被 join 成单条字符串；**output.system 必须 splice 原地改**（trigger 忽略返回值，request.ts:69-78 用局部数组引用） | `.../session/llm/request.ts:69,58-66`；`.../plugin/index.ts:282-296` |
 | 解锁信号（边界后 assistant 消息/工具调用）持久化在历史，`chat.message` 每轮扫历史即可（round-7：不用 `tool.execute.before`/`message.updated` hook 做信号） | `.../session/prompt.ts:999`；schema `.../v1/session.ts:597` |
 | `event` hook 存在：`message.updated` payload `{type, properties:{info: Message}}`（含 role）——D13 用于锚定回复落库后自动 prompt 轮 2 | plugin `index.d.ts:175`；sdk `types.gen.d.ts:129-134` |
+| **round-10 修订**：轮 2 触发点改用 `session.idle`（run 结束后发布，runner.ts:70-81 → run-state.ts:60-63 → status.ts:43）；`message.updated` 在 run Running 时发布（processor.ts:456/596），busy 下 `ensureRunning` 丢弃新 runLoop（runner.ts:120-122） | `.../effect/runner.ts:115-138`；`.../session/status.ts:43` |
 | synthetic text part：TUI 过滤（不显示），模型可见（message-v2.ts 只滤 ignored/空文本）——D13 锚定消息/注入块用 synthetic 隐藏 | `tui/src/routes/session/index.tsx:395,636,841`；`session/message-v2.ts:198-201` |
 | subagent 创建带 `parentID` + 派生 deny（task/todowrite/primary_tools）；`session.created` 对 subagent 同样触发；`subagent_depth` 默认 1 挡嵌套 | `.../tool/task.ts:104-172`；`.../agent/subagent-permissions.ts:14-27` |
 | subagent 默认上下文 = agent.prompt + AGENTS.md + skills（与主会话相同，无 parentID 分支）；模型继承父会话 | `.../session/prompt.ts:1257-1269`；`.../tool/task.ts:181-184` |

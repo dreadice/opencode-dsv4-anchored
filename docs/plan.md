@@ -332,11 +332,17 @@ execute })`——description/参数**逐字复刻 dsh**（research §4.11）：
   - `chat.message(input, output)` → `ensureState({...})`（await，保证本次生效）
   - `experimental.chat.system.transform(input, output)` → 探针捕获/替换/放行
   - `experimental.session.compacting(input)` → 回退
+  - **`event(input)` → `session.idle` → `sendRound2`**（D13 轮 2 自动发送；
+    触发点用 session.idle 而非 message.updated——busy 窗口会丢 runLoop，
+    research §4.12；probeSessions 跳过）
   - `tool = { str_replace_editor }` → 插件工具
   - `config(cfg)`（可选）→ 只读记录，不 mutate
-- 3.3 插件 options：`models`（默认 `["deepseek*v4*"]`）、`whitelist`、
-  `verify.n`（默认 3）、`verify.terms`（默认英文 + 可加中文）、
-  `probe.ttlMs`、`probe.cacheDir`、`log.level`
+- 3.3 插件 options（round-10 默认 zero 形态）：`models`（默认
+  `["deepseek*v4*"]`）、`whitelist`（**默认 `[]`** 0 工具）、`anchorText`
+  （**默认 dsh 原文**，设 `""` 关闭锚定轮）、`injectSystem`（默认启用）、
+  `firstTurnFilter`（默认 `{stripPersona: true}`）、`verify.n`（默认 3）、
+  `verify.terms`（默认英文词表；**ZH_TERMS 已移除**）、`probe.ttlMs`、
+  `probe.cacheDir`、`log.level`
 - 3.4 模块化引入：index 只做组装，逻辑全在 P1/P2 模块（可测）
 - 3.5 质量门：`npm run build` + `npm run lint` + `npm run typecheck` 全干净
   （消除旧骨架 6 个 unused）
@@ -378,8 +384,13 @@ this project."` + `reasoningEffort=max`）：
 - 4.10 TC-3-8 探针失败旁路：模拟（如临时不可达/超时）→ bypass warn、原生
   行为（视环境可行性，可降级为文档说明）
 - 4.11 TC-3-9 门控对照：`--model` 非 v4（如 `opencode/hy3-free`）→ 无插件处理
-- 4.12 TC-3-10 中文判别：中文 prompt + ZH_TERMS（配置开启）→ verified 或
-  giveup（记录；中文为实验词表）
+- 4.12 TC-3-10 中文判别：**已移除**（round-9/10：zero 方案锚定消息/回复恒英文，
+  中文实验词表 ZH_TERMS 删除）
+
+**round-9 真机结论（已回填 testing.md）**：官方端点 v4-pro + variant max 实测
+——minimal + **0 工具** → thinking we 风格 ✅；minimal + 双工具 → standard-like
+❌；首轮注入任何内容 → 破坏 we。→ **D13 zero-anchored**（0 工具锚定轮 + 真实
+消息推迟）成为唯一实证形态；flash-free 判别 giveup（标准 like，不锁死）。
 
 **验收**：日志链路 `probe → seeded(chat.message) → unlock → verify.*` 至少走到
 判别；首轮工具=两个；每项结果（含 giveup）如实记录回 plan/testing。

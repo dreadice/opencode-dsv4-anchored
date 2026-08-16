@@ -131,6 +131,11 @@ resume：`opencode run -s <sessionID> "继续"`；门控对照：`--model anthro
 内存实现：`session.get/update/messages/create/prompt/delete`、`app.agents()`、
 `app.log()`、`config.get()`。样例数据：
 
+- round-10 扩展：`session.prompt` 可注入自定义 handler（fake 默认 throw
+  PROBE_THROW_MESSAGE）——探针测试用"捕获+throw"handler；D13 测试用"持久化
+  消息到 `_messages`"handler（模拟真实 serve 的 createUserMessage）；prompt
+  调用全部记录到 `_promptCalls` 供断言。
+
 ```ts
 const buildRuleset = [
   {permission: '*', action: 'allow', pattern: '*'},
@@ -188,13 +193,29 @@ const messages = [
 | TC-2-22 | str_replace_editor str_replace | 唯一匹配                                                | 替换成功；多/无匹配 → 报错                                                                        |
 | TC-2-23 | str_replace_editor insert      | 行插入                                                  | 成功                                                                                              |
 | TC-2-24 | 日志分级                       | debug 关                                                | `debug()` 短路，无序列化/HTTP                                                                     |
+| TC-2-25 | 锚定轮（D13 首轮）             | anchorText 配置 + pristine + probe 缓存命中             | parts **替换**为纯锚定消息（synthetic、无 marker）；真实 parts 进 pending（存盘）；permission = seeded（whitelist []） |
+| TC-2-26 | 锚定轮 bypass 不推迟           | 探针失败                                                | 不替换 parts、不存 pending；真实消息原样                                                        |
+| TC-2-27 | 重锚定                         | pending 存在 + 边界后无 assistant（锚定中断）           | 当前 parts 追加 pending；parts 替换为锚定消息（重试）                                             |
+| TC-2-28 | event idle → 轮 2              | pending 存在 + `session.idle`                            | `session.prompt` 发出：parts = [user system（INJECT_MARKER、synthetic）+ pending 真实 parts]、显式 agent+model、无 tools；pending 已清（防重） |
+| TC-2-29 | 轮 2 prompt 失败恢复           | prompt reject                                           | `round2.fail` warn；pending 恢复（ensure 补发兜底）                                               |
+| TC-2-30 | ensure 悬挂补发                | pending 存在 + 边界后已有 assistant + 用户新消息         | 补发轮 2；当前消息**正常放行**（不推迟、不 placeholder）                                         |
+| TC-2-31 | idle 防重/无 pending           | idle 但 pending 已清 / 探针会话 idle                     | 不发 prompt（sending 防并发 + pending 判定 + probeSessions 跳过）                                 |
+| TC-2-32 | 轮 2 后解锁                    | 轮 2 消息入库（fake prompt 持久化）→ ensure              | stage=seeded + assistant 信号 → unlock；判别窗口含锚定回复                                        |
 
 ## 5. L3 真机集成测试（opencode run + opencode/deepseek-v4-flash-free）
 
-> **2026-08-16 实测**：全部用 flash-free（不用 pro）。模型 thinking 为
-> standard-like（"The user wants…/Let me explore"），判别走 giveup——符合
-> plan 预期（free 小模型不产出 we 风格），插件不锁死。v4-pro 验证留待用户
-> 提供 key 后补跑。
+> **2026-08-16 实测（round-9，官方端点 v4-pro + variant max）**：
+>
+> - minimal + **0 工具** → thinking **we 风格**（"We need answer..."）✅
+> - minimal + **双工具**（bash 描述对齐 dsh 后）→ standard-like ❌（opencode
+>   复现不了 dsh Anchored Standard 双工具锚定）
+> - 首轮注入任何内容（即使 stripPersona）→ 破坏 we 锚定
+> - **0 工具是唯一实证出 we 的形态** → D13 zero-anchored（0 工具锚定轮 +
+>   真实消息推迟）落定，实现中（round-10）
+>
+> flash-free 判别：thinking 为 standard-like（"The user wants…/Let me"），
+> 判别走 giveup——符合预期（free 小模型不产出 we 风格），插件不锁死。
+> v4-pro 验证留待 D13 实现后用户提供 key 补跑。
 
 ### 5.1 前置
 
@@ -217,15 +238,18 @@ const messages = [
 | TC-3-7  | compaction       | 长对话触发压缩                                                                                                                          | `compaction.rollback` warn；回 seeded；重注入；重新判别                                                                 | ⏳ 待验证（flash-free 128K 长对话才触发）                           |
 | TC-3-8  | 探针失败旁路     | 模拟（如临时断 key/超时）                                                                                                               | `bypass` warn；system 原生、工具全量                                                                                    | ⏳ 待验证（需模拟网络失败）                                         |
 | TC-3-9  | 门控对照         | `--model opencode/hy3-free`                                                                                                             | 无 dsv4-anchored 处理日志（原生）                                                                                       | ✅ 零插件日志（原生）                                               |
-| TC-3-10 | 中文判别（实验） | 中文 prompt + 中文词表                                                                                                                  | 通过则 verified；标记缺失则 giveup（warn）不锁死                                                                        | ⏳ 可选                                                             |
+| TC-3-10 | ~~中文判别（实验）~~        | 已移除（round-9/10：zero 方案锚定消息/回复恒英文，ZH_TERMS 删除） | — | — |
+| TC-3-11 | 锚定轮（D13，待实现后跑）   | 全新会话首条消息                                                | 日志：真实消息进 pending、parts=纯锚定消息、stage=seeded、whitelist []（0 工具）；`session.idle` 后 `round2.sent`；轮 2 自动发出（user system + 真实任务）→ `unlock` | ⏳ D13 实现后验证 |
 
 ### 5.3 判定口径（L3 成功标准）
 
-- **锚定成功** = TC-3-2 的判别达成（`verify.passed` / verified 哨兵）
-- dsh verify 清单对照：首轮 header 工具恰好 `[bash, str_replace_editor]`、
-  首条 assistant 的 reasoning 块 we 先于 let（`--thinking` + `--variant max`
-  输出复核，判据与 L1 `verifyText` 一致）
-- 日志链路：`probe.success → seeded(chat.message) → unlock → verify.passed`
+- **锚定成功** = 锚定轮（0 工具）回复落库后判别达成（`verify.passed` /
+  verified 哨兵）；锚定回复本身应是 we 风格（round-9 实证形态）
+- dsh verify 清单对照：锚定轮 header 工具恰好 **0 个**（`whitelist: []`）、
+  锚定回复的 reasoning 块 we 先于 let（`--thinking` + `--variant max` 输出
+  复核，判据与 L1 `verifyText` 一致）
+- 日志链路：`probe.success → seeded(chat.message) → round2.sent → unlock →
+  verify.passed`
 
 ## 6. TDD 工作流
 

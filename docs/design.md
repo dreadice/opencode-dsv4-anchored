@@ -9,7 +9,7 @@
 移植为 opencode 插件，解决 DeepSeek V4 系列的过拟合问题：模型一见完整 system
 就抢跑（首轮狂开工具、多步并行、话痨式 show off），把首轮轨迹带偏。
 
-**成功标准**：首轮行为被约束（纯 persona + 白名单工具），信号出现后恢复
+**成功标准**：首轮行为被约束（纯 persona + **0 工具**锚定轮），信号出现后恢复
 自然状态（工具解锁），特征判别通过后打成功标记（verified）；除首轮注入外
 不改变模型可见信息总量；用户可验证（日志）、可回退（卸载插件即原生）。
 
@@ -24,7 +24,7 @@
   ├─ chat.message：真实消息存盘 pending → parts 替换为锚定消息
   │   （synthetic → TUI 隐藏、模型可见）→ seeded 规则（0 工具）
   └─ 锚定回复落库（assistant 消息 = 晋升信号）
-       → event（message.updated）自动 session.prompt 发轮 2
+       → event（session.idle，run 结束后）自动 session.prompt 发轮 2
 轮 2（真实任务轮）：
   ├─ chat.message ensure：解锁（agent ruleset + session denies + 哨兵 unsealed）
   ├─ 注入 user system（探针捕获 → 去 opencode persona 首句）在前
@@ -110,7 +110,7 @@ chat.message（真实会话 S，首轮）
 error, ts}` 条目，可 cat 查看；日志打 bypass 事件。
 - **自组装 fallback 取消**：不再维护 ~95% 忠实的近似组装。
 
-## 4.5 时序：zero-anchored 锚定轮 + 真实消息推迟（round-9 定案）
+## 4.5 时序：zero-anchored 锚定轮 + 真实消息推迟（round-9 定案，round-10 修订）
 
 > 对齐 dsh whoami/zero-anchored：真实消息**不参与首轮**（首轮只有锚定消息），
 > 锚定回复落库（晋升信号）后**自动发出**轮 2（user system + 真实消息）。
@@ -121,34 +121,57 @@ error, ts}` 条目，可 cat 查看；日志打 bypass 事件。
   chat.message（落库前，prompt.ts:999-1047）
     ├─ 探针捕获 system（缓存 key，供轮 2 注入；零 token）
     ├─ 真实消息 parts → 存盘 pending（sessionID → parts JSON，probe-cache 同目录）
-    ├─ output.parts 替换为 [锚定消息 part（synthetic: true）]
-    │    · TUI 隐藏：tui routes/session/index.tsx:395 过滤 synthetic part
-    │    · 模型可见：message-v2.ts:198-201 只滤 ignored/空文本
-    │    → 模型只看到锚定消息 → we 风格回复（实测 ✓）
+    ├─ output.parts 替换为 [锚定消息 part（synthetic: true，纯 dsh 原文，
+    │    不加幂等标记——round-9 实测首轮任何额外内容都破坏 we 锚定）]
+    │    · synthetic：TUI 过滤不显示、模型可见（serve 端 message-v2 只滤
+    │      ignored/空文本）→ 模型只看到锚定消息 → we 风格回复（实测 ✓）
     └─ seeded 规则（whitelist: [] → 0 工具）
   锚定回复落库（assistant 消息 = 晋升信号）
-  event hook（message.updated，info.role === "assistant"）
+  event hook（session.idle，run 完全结束后发布）
     └─ 查 pending：存在 → client.session.prompt 自动发轮 2：
        parts = [user system part（探针捕获 → filterFirstTurnSystem 去 persona，
-       synthetic: true TUI 隐藏）... pending 真实消息 parts]
-       （不带 tools → 不替换 permission；新消息 id 单调 id/id.ts:51-70 →
-       排在锚定消息后）→ 清 pending
+       synthetic: true，带 INJECT_MARKER 幂等）+ ...pending 真实消息 parts]
+       （不带 tools → 不替换 permission；显式传 agent+model——省略时
+       createUserMessage 用默认 agent；新消息 id 单调 id/id.ts:51-70 →
+       排在锚定消息后）→ 发送前清 pending（内存 + 磁盘）
 轮 2（prompt 消息入库，自动触发 chat.message ensure）：
     ├─ stage=seeded + 历史有 assistant 信号 → unlock（全量工具 + 哨兵 unsealed）
     └─ 模型带全量工具处理真实任务
 ```
 
+**触发点修订（round-10，实现前源码核实）**：D13 原定 `event`（message.updated，
+info.role === "assistant"）触发轮 2，但 busy 窗口下不安全：
+
+- `message.updated` 在 run **仍在 Running** 时发布（processor.ts:456/596 →
+  `sessions.updateMessage` → `Session.Event.MessageUpdated`，session.ts:633）；
+- 此时 `session.prompt`（→ `loop` → `ensureRunning`，prompt.ts:1346）在 runner
+  busy 状态下**等待当前 run 完成后丢弃新 work**（runner.ts:120-122
+  `return [awaitDone(st.run.done), st]`——不排队、不报错）→ 轮 2 消息已入库
+  但 runLoop 永不执行（静默丢失）；
+- `session.idle`（`{type:"session.idle", properties:{sessionID}}`，
+  sdk types.gen.d.ts:413-417）由 runner 完成时发布（runner.ts:70-81 finishRun
+  → onIdle → run-state.ts:60-63 → status.ts:43 `publish(Event.Idle)`）→
+  **run 完全结束、无 busy 竞态** → 用它触发轮 2。
+
 **竞态与边界**：
 
 - **bypass（探针失败）**：不替换 parts、不存 pending——真实消息原样发出
   （原生行为，锚定不生效）。
-- **prompt 防重**：prompt 前先清 pending（磁盘删除），message.updated 多次
-  触发（每 part 更新）不重复发。
-- **重启悬挂**：pending 落盘但 event 不重放历史 → ensure 时若 pending 存在且
-  边界后已有 assistant 消息（锚定已完成）→ 补发 prompt。
+- **prompt 防重**：发送前先清 pending（内存 + 磁盘）+ sending 集合（进程内
+  防并发）；idle 对探针会话、轮 2 及后续 run 重复触发不重复发（pending 已清）。
+- **重锚定（锚定回复未落库）**：pending 存在 + 边界后无 assistant 消息
+  （锚定中断/失败/用户重试）→ 当前消息 parts **追加** pending，parts 替换为
+  锚定消息重试锚定轮。
+- **重启悬挂（ensure 补发）**：pending 落盘但 event 不重放历史 → ensure 时
+  若 pending 存在且边界后已有 assistant 消息（锚定已完成）→ 补发 prompt；
+  **当前消息正常放行（不推迟）**——pending 旧内容经轮 2 作为历史上下文可见，
+  当前消息自身 run 正常处理（避免"当前消息变空 placeholder + 空 user run"）。
+- **prompt 失败**：恢复 pending（内存 + 磁盘）→ 下次 ensure 补发兜底。
 - **prompt 触发 chain**：session.prompt 消息入库 → chat.message 触发 → ensure
   （探针会话跳过逻辑只认 probeSessions，真实会话正常）→ unlock 在本次生效
   （await 内）。
+- **并发 run 竞态（可接受）**：补发 prompt 与当前消息的 run 竞争 ensureRunning，
+  先到者启动、后到者被丢弃——被丢的消息仍在历史，后续轮模型可见，内容不丢。
 - **TUI 显示**：轮 1 用户消息 = synthetic 锚定 → 隐藏；轮 2 = [synthetic
   user system（隐藏）+ 真实任务（正常显示）]——用户看到真实任务自动发出
   （系统代发，对齐 dsh whoami 体验）。
@@ -161,20 +184,22 @@ error, ts}` 条目，可 cat 查看；日志打 bypass 事件。
 | -------- | ------------------ | -------------------------------------------------------------------------------- |
 | pristine | 无哨兵规则         | `chat.message` ensure → 注入 + seeded（追加规则）                                |
 | seeded   | 哨兵 `seeded`      | 注入成功；解锁信号（边界后 assistant 消息/工具调用）→ 解锁；判别进行中（N=3 轮） |
+
+- 注（zero 形态，§4.5）：seeded 即锚定轮已完成（锚定消息已发、真实消息在
+  pending）；锚定回复落库后由 event/sendRound2 发轮 2，轮 2 消息的 ensure
+  完成解锁。
 | unsealed | 哨兵 `unsealed`    | 已解锁（seeded 的内部变体，防重复解锁）；判别进行中                              |
 | verified | 哨兵 `verified`    | 判别通过（模型输出特征达成，成功标记）；不再解锁/判别                            |
 | bypass   | key failed（缓存） | 全部 hook 原样放行（key 级判定，无哨兵）                                         |
 
 - 哨兵 = 插件自造规则 `{permission:"__dsv4_stage__", pattern:<阶段>,
 action:"allow"}`（不匹配任何真实工具，惰性；`findLast` 取阶段）。
-- seeded 规则（**D10：严格 minimal 工具对**）：
+- seeded 规则（**D10：严格 minimal 工具对**；round-10 起默认白名单 = `[]`，
+  **zero 形态：0 工具**，见 §8.2）：
   `[{permission:"__dsv4_stage__",pattern:"seeded",action:"allow"},
  {permission:"*",pattern:"*",action:"deny"},
- {permission:"bash",pattern:"*",action:"allow"},
- {permission:"str_replace_editor",pattern:"*",action:"allow"},
- {permission:"external_directory",pattern:"*",action:"allow"}]`
-  （白名单可配置，默认 `["bash","str_replace_editor"]`；`deny *` 已隐藏内置
-  edit/write/apply_patch 等全部非白名单工具，无需额外 deny——
+ ...whitelist.map(allow), {permission:"external_directory",pattern:"*",action:"allow"}]`
+  （白名单可配置，zero 形态默认 `[]`；`deny *` 已隐藏全部内置工具——
   `disabled()` 只在 `pattern==="*" && action==="deny"` 时隐藏工具）。
 - 解锁（原 promote；D2/D6/D7 修订 + D10）：
   `[...agent.permission, ...sessionDenies(排除插件自身 deny *),
@@ -196,9 +221,9 @@ action:"allow"}`（不匹配任何真实工具，惰性；`findLast` 取阶段�
   `we`）与 let 系词（`let me`/`let's`）的位置；**`idx(we系) < idx(let系)` 即
   通过**（let 系不出现 = +∞，we 系存在即通过；we 系不出现则不通过）。贴合
   dsh"首行 `We need…`"语义（思维起步取向），对 `let me` 少量出现鲁棒（dsh
-  r1 实测 let me=1 仍为 minimal 轨迹）。词表可配置（§8.2 `verify.terms`）；
-  中文词表（`我们` vs `让我`/`我来`/`我先`）为实验性——中文主语常省略、let
-  系变体多、标记不稳定，判别失败即 giveup，不锁死。
+   r1 实测 let me=1 仍为 minimal 轨迹）。词表可配置（§8.2 `verify.terms`）；
+   中文词表曾为实验项——round-9 起 zero 方案锚定回复恒英文、中文词表移除
+   （`ZH_TERMS` 已删，round-10）。
 - compaction 回退（**D5 修订，对齐 dsh compactionTools**）：`experimental.session.compacting`
   hook（`compaction.ts:373`，input 含 `sessionID`，无 session.compacted 事件）
   触发 → 追加 `deny *` + minimal 对 + **compactionTools**（read/glob/grep/edit/
@@ -211,10 +236,15 @@ action:"allow"}`（不匹配任何真实工具，惰性；`findLast` 取阶段�
   `part.state.time.compacted` 只是清 tool 输出，**不是**压缩边界，不触发回退。
 - fresh 判定：session.messages 无 assistant 消息。
 
-## 6. 注入与幂等（D3 修订）
+## 6. 注入与幂等（D3 修订 + round-10 修订）
 
 - 注入点：`chat.message` 原地 `output.parts.unshift(...)`（`prompt.ts:999-1047`：
   落库前触发、parts 同引用、本消息持久化且进入本次请求、排在真实消息 parts 前）。
+- **zero 形态（默认，§4.5）**：注入由 **sendRound2 直接携带**——轮 2 的
+  `session.prompt` parts = [user system part（探针捕获 → `filterFirstTurnSystem`
+  去 persona，synthetic，带 `INJECT_MARKER`）+ pending 真实 parts]；ensure 的
+  `stage === "unsealed"` 注入分支为后续消息 / resume 兜底（历史无幂等标记即
+  注入）。
 - 注入内容 = **探针捕获的 system 全量** + 幂等标记文本（如
   `[dsv4-anchored:injected]`）。
 - resume 判定：扫 session 历史 parts 中是否已有标记 → 已注入则不再注入。
@@ -272,6 +302,8 @@ logError`（`handlers/control.ts:28-39`）；级别仅 debug/info/warn/error，
 | bypass              | warn | key、reason                                                                         | —                     |
 | system.transform    | info | sessionID、gating、action(replace/passthrough)、beforeLen、afterLen、beforeHash     | 替换前后全文          |
 | unlock              | info | sessionID、agentRuleset 条数、排除 denies、哨兵 unsealed                            | 完整 ruleset 追加列表 |
+| round2.sent         | info | sessionID、partCount、sysInjected(是否含 user system part)                          | 轮 2 完整 parts        |
+| round2.fail         | warn | sessionID、error（pending 已恢复，ensure 补发兜底）                                 | —                     |
 | verify.passed       | info | sessionID、判别消息 id、特征摘要（首行、letMe 计数）                                | 判别消息全文          |
 | verify.giveup       | warn | sessionID、已检轮数 N                                                               | —                     |
 | compaction.rollback | warn | sessionID                                                                           | —                     |
@@ -298,9 +330,12 @@ logError`（`handlers/control.ts:28-39`）；级别仅 debug/info/warn/error，
 | 项             | 默认                                                  | 说明                                                                                                 |
 | -------------- | ----------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
 | `models`       | `["deepseek*v4*"]`                                    | 门控模型通配符                                                                                       |
-| `whitelist`    | `["bash","str_replace_editor"]`                       | seeded 期白名单（**D10：严格 minimal 工具对**）                                                      |
+| `whitelist`    | `[]`                                                  | seeded 期白名单（**round-10 起 zero 形态：0 工具**，对齐 dsh zero-anchored 实测）                    |
+| `anchorText`   | `"This round is a test. Tools are not open yet; all tools will open next round."` | zero-anchored 锚定消息（dsh 原文；设为 `""` 关闭锚定轮，退回旧形态）                  |
+| `injectSystem` | 启用                                                  | 轮 2 注入 user system（`false` 关闭，仅锚定 + 真实消息）                                             |
+| `firstTurnFilter` | `{stripPersona: true}`                            | 注入前选择性剥离（D11；默认去 opencode persona 首句）                                                |
 | `verify.n`     | `3`                                                   | 判别窗口（常量）                                                                                     |
-| `verify.terms` | 英文：we `["we need","we"]`、let `["let me","let's"]` | 轨迹标记词表；中文实验词表：we `["我们"]`、let `["让我","我来","我先"]`（不稳定，标记缺失即 giveup） |
+| `verify.terms` | 英文：we `["we need","we"]`、let `["let me","let's"]` | 轨迹标记词表（round-10：中文实验词表 `ZH_TERMS` 已移除——锚定回复恒英文）                            |
 
 ### 8.2.1 白名单 permission 名 ↔ 工具映射
 
@@ -318,6 +353,8 @@ logError`（`handlers/control.ts:28-39`）；级别仅 debug/info/warn/error，
 默认 `["bash","str_replace_editor"]` 首轮模型可见 = 恰好两个工具，与 dsh
 minimal 的 `['bash','str_replace_editor']` 集合一致（dsh e2e 断言
 `web-agent-presets.e2e.ts:227`）；`deny *` 已隐藏内置 edit/write/apply_patch。
+**round-10 起默认 `[]`**：实测 0 工具才是唯一实证出 we 形态的配置（§2、D13），
+双工具形态作为 `whitelist` 显式配置项保留。
 
 ### 8.2.2 alias 工具：`str_replace_editor`（D10）
 
@@ -351,17 +388,19 @@ grep dsv4-anchored ~/.local/share/opencode/log/opencode.log
 
 1. **日志验证**（每次请求）：`chat.message` 打阶段/门控/注入来源/可见工具；
    `system.transform` 打替换前后摘要——grep `dsv4-anchored` 即可核对。
-2. **行为清单**：
-   - 首轮：可见工具 = 恰好两个：bash + str_replace_editor；system = minimal persona；
-     首条 user 消息含幂等标记（注入来源 probe/bypass 见日志）。
-   - 首轮 assistant 消息后：解锁日志出现（哨兵 unsealed）；可见工具恢复
-     agent ruleset；判别进行（N=3 窗口）。
+2. **行为清单**（zero 形态，§4.5）：
+   - 轮 1（锚定轮）：可见工具 = **0 个**；system = minimal persona；真实消息
+     进 pending（落盘）；用户消息 parts = 纯锚定消息（synthetic）。
+   - 锚定回复落库 → `session.idle` → `round2.sent` 日志；轮 2 自动发出
+     （user system + 真实消息）；轮 2 消息 ensure → `unlock` 日志（哨兵
+     unsealed）；可见工具恢复 agent ruleset；判别进行（N=3 窗口）。
    - 判别：窗口内任一 assistant 消息符合特征 → verified 日志，此后不再判别
      （第一轮符合则第二轮不判）；N 条全不符合 → giveup warn（每进程一次），
      保留当前状态。
-   - 探针失败场景：bypass 日志；system 保持原生；工具全量（未 seeded）。
-   - 重启 resume：verified 会话不再注入；seeded/unsealed 会话按边界后信号
-     解锁、按窗口判别。
+   - 探针失败场景：bypass 日志；system 保持原生；工具全量（未 seeded、
+     未锚定——真实消息原样发出）。
+   - 重启 resume：pending 悬挂 → ensure 补发 `round2.sent`；verified 会话
+     不再注入；seeded/unsealed 会话按边界后信号解锁、按窗口判别。
    - compaction 后：回退 seeded（重新注入 + 重新判别）。
 3. **判别效果实测**（唯一真正待验证项）：按 dsh verify 清单复验——首轮
    header tools 数量、首行风格、`let me` 计数（str_replace_editor 已逐字复刻
@@ -397,6 +436,17 @@ grep dsv4-anchored ~/.local/share/opencode/log/opencode.log
 6. chat.system.transform（探针捕获 + 真实会话替换 minimal）
 7. compaction 回退（`experimental.session.compacting` → 回 seeded）、resume
    re-sync、agent include/exclude 配置
+8. **D13 zero-anchored（round-10 定案，§4.5）**：
+   - `src/pending.ts`：pending 存储（内存 Map + 磁盘 JSON，`pending.json` 与
+     probe-cache 同目录 + sending 防重集合）
+   - `src/round2.ts`：`sendRound2`——轮 2 prompt（user system part +
+     pending 真实 parts，显式 agent+model，不带 tools；发送前清 pending，
+     失败恢复 pending 交 ensure 补发）
+   - `src/core.ts` ensure 锚定流：首轮替换 parts + 推迟 / 重锚定 /
+     悬挂补发（当前消息正常放行）
+   - `src/index.ts`：`event` hook（`session.idle` → `sendRound2`，
+     probeSessions 跳过）+ pending 装载/保存 + 默认 zero 配置
+   - 移除 `ANCHOR_MARKER`（锚定消息纯净）与 `ZH_TERMS`（verify.ts）
 
 ## 12. 相关文档
 

@@ -395,8 +395,65 @@ str_replace = 唯一匹配替换（多匹配/无匹配报错）；insert = 按�
 pattern:"*", action:"deny"}`（findLast 命中）→ 目录恢复 opencode 自然状态；
 插件工具仅 seeded 期使用（用户："只是system用一下，后边隐藏就行"）。
 
-## 5. 移植方案设计
+### 4.12 D13 轮 2 自动发送的源码事实（round-10 研究，实现依据）
 
+**1. `message.updated` 不能触发轮 2 —— busy 窗口会静默丢弃 runLoop**：
+
+- `message.updated` 在 run **仍在 Running** 时发布：processor 每条/每步落库
+  `sessions.updateMessage(ctx.assistantMessage)`（`processor.ts:456,596`）→
+  `Session.Event.MessageUpdated`（`session.ts:633`）；
+- `session.prompt` 走 `SessionPrompt.prompt` → `loop` → `state.ensureRunning`
+  （`prompt.ts:1052-1056,1344-1347`）；
+- **`ensureRunning` 在 session busy 时丢弃新 work**（`effect/runner.ts:115-138`）：
+  state = Running 时 `return [awaitDone(st.run.done), st]`——只等待当前 run
+  完成并返回其结果，**不排队、不报错、不执行新 runLoop**。此时 prompt 的
+  用户消息已入库（`createUserMessage` 在 loop 之前）→ 轮 2 消息落库但
+  runLoop 永不执行（静默丢失）。
+- 结论：轮 2 必须在 session **空闲**时发 → 触发点 = `session.idle`。
+
+**2. `session.idle` 发布链路（run 完全结束后）**：
+
+- `runner.ts:70-81` `finishRun`（run 结束/中断都触发）→ onIdle（run-state.ts:
+  60-63 `data.runners.delete` + `status.set(idle)`）→ `status.ts:43`
+  `if (status.type === "idle") publish(Event.Idle, {sessionID})`；
+- SDK 类型：`EventSessionIdle = {type:"session.idle", properties:
+  {sessionID}}`（`types.gen.d.ts:413-417`）；`EventMessageUpdated = {type:
+  "message.updated", properties:{info: Message}}`（`:129-134`，Message 含
+  role/sessionID/parts）；
+- plugin `event` hook input = `{event: Event}`（plugin `index.d.ts:175-177`，
+  触发是 fire-and-forget：`void hook["event"]?.(...)`，plugin/index.ts:257）→
+  hook 内异步长任务安全。
+
+**3. `session.prompt` 不带 agent/model 的推断**（`prompt.ts:637-641`
+`createUserMessage`）：`agent = input.agent ?? agents.defaultInfo()`（**默认
+agent，不是会话当前 agent**）；`model = input.model ?? ag.model ?? currentModel
+(sessionID)`。→ 轮 2 必须显式传会话的 agent + model（否则可能切默认 agent，
+runLoop 按 lastUser.agent 取 agent prompt，语义漂移）。
+
+**4. prompt 的 parts 会经 `resolvePart` 二次处理**（`prompt.ts:700-970`，
+chat.message 触发前已 resolve 完——`prompt.ts:1005-1014`）：
+
+- file part：`data:` URL 原样保留（非 text/plain）；`file:` URL 重新读文件；
+  MCP resource 展开为 synthetic 文本段；
+- `messageID/sessionID` 由 `assign` 覆盖（`prompt.ts:693-697`），part id 保留
+  ——首轮替换后原 part 从未落库 → 轮 2 重发 pending parts（含原 id）无冲突；
+- `TextPartInput` 支持 `id?/synthetic?/ignored?`（`types.gen.d.ts:1231-1250`）
+  → user system part 可直接带 `synthetic: true`；
+- `SessionPromptData.body = {messageID?, model?{providerID,modelID}, agent?,
+  noReply?, system?, tools?, parts[]}`（`types.gen.d.ts:2244+`）。
+
+**5. chat.message 时机（消息在 hook 之后才落库）**：`createUserMessage` =
+resolvePart → `plugin.trigger("chat.message")` → `updateMessage(info)` +
+`updatePart`（`prompt.ts:1005-1047`）。→ ensure 内此时当前消息尚未入库：
+首轮替换 parts（真实消息进 pending）安全；补发轮 2 时当前消息的 run 尚未
+开始（ensureRunning 在 prompt() 返回前）。
+
+**6. 锚定消息不加幂等标记**：round-9 实测"首轮注入任何内容（即使 stripPersona）
+破坏 we 锚定"→ 锚定 part 文本 = dsh 原文（`ZERO_ANCHOR_TEXT`），不拼
+`ANCHOR_MARKER`；锚定状态判定改由 **pending 存在性 + 边界后 assistant 消息**
+推导（不再扫标记），幂等标记（`INJECT_MARKER`）只用于轮 2 的 user system part。
+
+## 5. 移植方案设计
 ### 5.1 状态机（round-7 定案：seeded/unsealed/verified）
 
 ```
@@ -549,9 +606,9 @@ agent ruleset（`client.app.agents()` 取）+ session deny；提供 include/excl
    在場 AGENTS.md/技能目录（dsh 首轮剥离），实测不达标时启用选择性剥离升级
    路径。
 2. **判别标记的语言依赖**：`idx(we系) < idx(let系)` 是 dsh 英文语料特征
-   （思维起步取向）；中文词表（`我们` vs `让我`/`我来`/`我先`）实验性——中文
-   主语常省略、let 系变体多，标记不稳定，标记缺失 → giveup（停止判别，warn）
-   不锁死（round-7/8 确认）。
+   （思维起步取向）；中文词表曾为实验项（`我们` vs `让我`/`我来`/`我先`）——
+   round-9 起 zero 方案锚定回复恒英文（锚定消息固定英文），**中文词表已移除**
+   （round-10，`ZH_TERMS` 删除；判别对象 = 锚定轮/真实任务的英文回复）。
 3. **首轮 token 不省**：注入 = 原 system 全部内容 → 首轮上下文体积与原来相当
    （收益在 system 位置内容最小化，非省 token）。用户已接受。
 4. **seeded 期白名单工具不触发 ask**（行为说明，非缺陷）：首轮内 bash/
@@ -609,3 +666,12 @@ parentID`，但 SDK 类型未声明，需 `as any`（技术债，无用户感知
   （`experimental.session.compacting`）、`CompactionPart` schema
   `packages/schema/src/v1/session.ts:195-202`、`Info.compacted` 时间戳
   `v1/session.ts:286`、prune 标记 `compaction.ts:311`、落库细节 `compaction.ts:480-608`
+- D13 轮 2（round-10）：runner busy 丢弃 runLoop `src/effect/runner.ts:115-138`
+  （`ensureRunning`）、`message.updated` 发布时间 `src/session/processor.ts:456,596`
+  + `src/session/session.ts:633`、`session.idle` 发布链路 `runner.ts:70-81` +
+  `src/session/run-state.ts:60-63` + `src/session/status.ts:43`、
+  `createUserMessage` agent/model 推断 `src/session/prompt.ts:637-641,693-697`、
+  parts 重解析 `prompt.ts:700-970`、chat.message 时机 `prompt.ts:1005-1047`、
+  `EventSessionIdle` sdk `types.gen.d.ts:413-417`、`TextPartInput`
+  `types.gen.d.ts:1231-1250`、event hook fire-and-forget
+  `src/plugin/index.ts:257`
