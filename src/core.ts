@@ -136,7 +136,12 @@ export async function ensureState(
   ) {
     // zero-anchored 锚定轮：prepend 固定锚定消息，真实任务不参与首轮。
     input.outputParts.unshift(
-      buildInjectionPart(options.anchorText, input.sessionID, input.messageID, ANCHOR_MARKER)
+      buildInjectionPart(
+        options.anchorText,
+        input.sessionID,
+        input.messageID,
+        ANCHOR_MARKER
+      )
     );
     injected = true;
   } else if (
