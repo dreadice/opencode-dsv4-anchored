@@ -27,9 +27,10 @@ export type FakeLog = {msg: string; level?: string; [k: string]: unknown};
 export type FakeClient = {
   session: {
     get(opts: {path: {id: string}}): Promise<FakeSession>;
-    update(
-      opts: {path: {id: string}; body?: {permission?: Rule[]; title?: string}}
-    ): Promise<FakeSession>;
+    update(opts: {
+      path: {id: string};
+      body?: {permission?: Rule[]; title?: string};
+    }): Promise<FakeSession>;
     messages(opts: {path: {id: string}}): Promise<FakeMessage[]>;
     create(opts: {
       query?: {directory?: string};
@@ -98,7 +99,13 @@ export function createFakeClient(opts?: {
       async get({path}) {
         return session(path.id);
       },
-      async update({path, body}: {path: {id: string}; body?: {permission?: Rule[]; title?: string}}) {
+      async update({
+        path,
+        body,
+      }: {
+        path: {id: string};
+        body?: {permission?: Rule[]; title?: string};
+      }) {
         const s = session(path.id);
         if (body?.permission)
           s.permission = [...s.permission, ...body.permission];
