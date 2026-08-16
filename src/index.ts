@@ -54,7 +54,7 @@ export const Dsv4Anchored: Plugin = async ({client}, options) => {
         {
           sessionID: input.sessionID,
           model: input.model,
-          messageID: input.messageID ?? '',
+          messageID: output.message.id,
           outputParts: output.parts,
         }
       );
