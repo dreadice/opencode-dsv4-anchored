@@ -45,6 +45,11 @@ export type FakeClient = {
     agents(): Promise<FakeAgent[]>;
     log(msg: string, opts?: {level?: string; [k: string]: unknown}): void;
   };
+  tui: {
+    showToast(opts: {
+      body?: {title?: string; message: string; variant: string};
+    }): Promise<unknown>;
+  };
   config: {
     get(): Promise<Record<string, never>>;
   };
@@ -52,6 +57,7 @@ export type FakeClient = {
   _sessions: Map<string, FakeSession>;
   _messages: Map<string, FakeMessage[]>;
   _promptCalls: Array<{id: string; body: unknown}>;
+  _toasts: Array<{title?: string; message: string; variant: string}>;
   _promptHandler: ((id: string, body: unknown) => Promise<unknown>) | undefined;
   setPromptHandler(h: (id: string, body: unknown) => Promise<unknown>): void;
 };
@@ -89,6 +95,7 @@ export function createFakeClient(opts?: {
   const sessions = new Map<string, FakeSession>();
   const messages = new Map<string, FakeMessage[]>();
   const logs: FakeLog[] = [];
+  const toasts: Array<{title?: string; message: string; variant: string}> = [];
   const promptCalls: Array<{id: string; body: unknown}> = [];
   let promptHandler: FakeClient['_promptHandler'];
 
@@ -148,6 +155,15 @@ export function createFakeClient(opts?: {
         logs.push({msg, ...opts});
       },
     },
+    tui: {
+      async showToast({body}) {
+        toasts.push({
+          title: body?.title,
+          message: body?.message ?? '',
+          variant: body?.variant ?? 'info',
+        });
+      },
+    },
     config: {
       async get() {
         return {};
@@ -157,6 +173,7 @@ export function createFakeClient(opts?: {
     _sessions: sessions,
     _messages: messages,
     _promptCalls: promptCalls,
+    _toasts: toasts,
     _promptHandler: undefined,
     setPromptHandler(h) {
       promptHandler = h;

@@ -1,7 +1,7 @@
 import {filterFirstTurnSystem, buildInjectionPart} from '@/inject';
 import {probeKey, type ProbeStore} from '@/probe';
 import {savePendingStore, type PendingStore} from '@/pending';
-import type {EnsureOptions} from '@/core';
+import type {EnsureOptions, ToastFn} from '@/core';
 import type {Logger} from '@/logger';
 
 /**
@@ -37,6 +37,7 @@ export type Round2Ctx = {
   probeStore: ProbeStore;
   pendingStore: PendingStore;
   pendingFile: string;
+  toast?: ToastFn;
 };
 
 export async function sendRound2(
@@ -83,6 +84,11 @@ export async function sendRound2(
       sessionID,
       partCount: parts.length,
       sysInjected: parts.length > pending.parts.length,
+    });
+    ctx.toast?.({
+      title: 'dsv4-anchored',
+      message: '轮 2 已自动发出（真实任务 + 完整工具）',
+      variant: 'info',
     });
     return true;
   } catch (error) {

@@ -9,7 +9,7 @@ import {sendRound2, type Round2Ctx} from '@/round2';
 import {makeLogger} from '@/logger';
 import {DEFAULT_TERMS, type VerifyTerms} from '@/verify';
 import type {FirstTurnFilter} from '@/inject';
-import {adaptClient, adaptLog} from '@/sdk-adapter';
+import {adaptClient, adaptLog, adaptToast} from '@/sdk-adapter';
 import {join} from 'node:path';
 import {homedir} from 'node:os';
 
@@ -34,6 +34,8 @@ type Dsv4Options = {
   injectSystem?: boolean;
   anchorText?: string;
   firstTurnFilter?: FirstTurnFilter;
+  /** TUI toast 提示（触发/生效的可见标记）；false 关闭。 */
+  toast?: boolean;
 };
 
 function resolveOptions(options?: PluginOptions): EnsureOptions {
@@ -53,6 +55,7 @@ function resolveOptions(options?: PluginOptions): EnsureOptions {
       opts.anchorText === ''
         ? undefined
         : (opts.anchorText ?? ZERO_ANCHOR_TEXT),
+    toast: opts.toast,
   };
 }
 
@@ -68,6 +71,7 @@ export const Dsv4Anchored: Plugin = async ({client}, options) => {
   const probeSessions = new Map<string, string>();
   const giveupOnce = new Set<string>();
   const logger = makeLogger(adaptLog(client));
+  const toast = eopts.toast !== false ? adaptToast(client) : undefined;
 
   const ctx = {
     client: sdk,
@@ -78,6 +82,7 @@ export const Dsv4Anchored: Plugin = async ({client}, options) => {
     giveupOnce,
     pendingStore,
     pendingFile,
+    toast,
   };
 
   return {

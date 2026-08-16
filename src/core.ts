@@ -63,7 +63,16 @@ export type EnsureOptions = {
   /** 零工具锚定轮（zero-anchored）：首轮 prepend 固定锚定消息，不注入 system；
    * 优先于 injectSystem。 */
   anchorText?: string;
+  /** TUI toast 提示开关（触发/生效的可见标记；默认开启）。 */
+  toast?: boolean;
 };
+
+/** TUI toast：fire-and-forget，不阻塞 hook 链路。 */
+export type ToastFn = (opts: {
+  title?: string;
+  message: string;
+  variant: 'info' | 'success' | 'warning' | 'error';
+}) => void;
 
 export type EnsureCtx = {
   client: CoreClient & ProbeClient;
@@ -74,6 +83,7 @@ export type EnsureCtx = {
   giveupOnce: Set<string>;
   pendingStore: PendingStore;
   pendingFile: string;
+  toast?: ToastFn;
 };
 
 export type EnsureInput = {
@@ -153,6 +163,11 @@ export async function ensureState(
   if (probe.bypass) {
     logger.warn('bypass', {key, reason: 'probe failed or ttl'});
     // wire 兼容：新会话 GET /session/:id 可能无 permission 字段（serve 实测）
+    ctx.toast?.({
+      title: 'dsv4-anchored',
+      message: '探针失败，本次按原生处理（bypass）',
+      variant: 'warning',
+    });
     return {action: 'bypass', stage: getStage(session.permission ?? [])};
   }
 
@@ -195,6 +210,11 @@ export async function ensureState(
       void savePendingStore(ctx.pendingStore, ctx.pendingFile);
       replaceWithAnchor(input, anchorText);
       anchored = true;
+      ctx.toast?.({
+        title: 'dsv4-anchored',
+        message: '锚定轮：真实任务推迟，下一轮自动发出',
+        variant: 'info',
+      });
     }
     // pending 无 + 锚定已落库（旧会话/轮 2 已发出）→ 正常放行
   } else if (
@@ -244,6 +264,11 @@ export async function ensureState(
         body: {permission: unlockRules(agentRuleset, denies)},
       });
       logger.info('unlock', {sessionID: input.sessionID, agent: session.agent});
+      ctx.toast?.({
+        title: 'dsv4-anchored',
+        message: '工具已解锁（agent ruleset 恢复）',
+        variant: 'success',
+      });
       return {action: 'unlock', stage: 'unsealed'};
     }
 
@@ -269,6 +294,11 @@ export async function ensureState(
         logger.info('verify.passed', {
           sessionID: input.sessionID,
           checked: assistants.length,
+        });
+        ctx.toast?.({
+          title: 'dsv4-anchored',
+          message: '锚定判别通过（verified）',
+          variant: 'success',
         });
         return {action: 'verify', stage: 'verified'};
       }

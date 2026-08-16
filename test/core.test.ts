@@ -172,6 +172,10 @@ test('TC-2-6: seeded + 历史 assistant 消息 → 解锁', async () => {
   ]);
   const res = await ensureState(ctx, input('ses_1'));
   assert.equal(res.action, 'unlock');
+  assert.ok(
+    client._toasts.some(t => t.message.includes('工具已解锁')),
+    '解锁应发 TUI toast'
+  );
   const s = client._sessions.get('ses_1')!;
   assert.equal(s.permission.at(-1)!.pattern, 'unsealed');
   assert.ok(
@@ -208,6 +212,10 @@ test('TC-2-8: 判别通过 → verified', async () => {
   ]);
   const res = await ensureState(ctx, input('ses_1'));
   assert.equal(res.action, 'verify');
+  assert.ok(
+    client._toasts.some(t => t.message.includes('判别通过')),
+    '判别通过应发 TUI toast'
+  );
   const s = client._sessions.get('ses_1')!;
   assert.equal(s.permission.at(-1)!.pattern, 'verified');
 });

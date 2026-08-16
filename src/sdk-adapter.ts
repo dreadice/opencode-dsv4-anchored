@@ -53,3 +53,16 @@ export function adaptLog(client: SDKClient): LogFn {
     });
   };
 }
+
+/** TUI toast 适配：SDK `tui.showToast({body})`（server 事件总线 → TUI 显示）。 */
+export type ToastFn = (opts: {
+  title?: string;
+  message: string;
+  variant: 'info' | 'success' | 'warning' | 'error';
+}) => void;
+
+export function adaptToast(client: SDKClient): ToastFn {
+  return opts => {
+    void client.tui.showToast({body: opts});
+  };
+}

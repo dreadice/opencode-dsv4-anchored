@@ -64,6 +64,10 @@ test('TC-2-28: session.idle → 轮 2 自动发出（user system + pending 真�
     false,
     '发送前清 pending（防重）'
   );
+  assert.ok(
+    client._toasts.some(t => t.message.includes('轮 2 已自动发出')),
+    '轮 2 应发 TUI toast'
+  );
   const body = promptBody as {
     parts: Array<Record<string, unknown>>;
     agent: string;
