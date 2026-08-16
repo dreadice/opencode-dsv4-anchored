@@ -314,6 +314,19 @@ logError`（`handlers/control.ts:28-39`）；级别仅 debug/info/warn/error，
 
 统一前缀 `dsv4-anchored`，用 `client.app.log(msg, {level, ...fields})` 结构化解构。
 
+### 7.4 TUI toast 提示（round-10）
+
+关键事件发 TUI toast（`client.tui.showToast` → 事件总线 → TUI 显示，
+默认开启，`toast: false` 关闭）：
+
+| 事件           | toast 文案                             | variant |
+| -------------- | -------------------------------------- | ------- |
+| 锚定轮（首轮） | 锚定轮：真实任务推迟，下一轮自动发出   | info    |
+| round2.sent    | 轮 2 已自动发出（真实任务 + 完整工具） | info    |
+| unlock         | 工具已解锁（agent ruleset 恢复）       | success |
+| verify.passed  | 锚定判别通过（verified）               | success |
+| bypass         | 探针失败，本次按原生处理（bypass）     | warning |
+
 ## 8. 配置与使用
 
 ### 8.1 安装
@@ -343,6 +356,7 @@ opencode 官方支持两种插件加载方式（本地文件 / npm 包），互�
 | `firstTurnFilter` | `{stripPersona: true}`                                                            | 注入前选择性剥离（D11；默认去 opencode persona 首句）                             |
 | `verify.n`        | `3`                                                                               | 判别窗口（常量）                                                                  |
 | `verify.terms`    | 英文：we `["we need","we"]`、let `["let me","let's"]`                             | 轨迹标记词表（round-10：中文实验词表 `ZH_TERMS` 已移除——锚定回复恒英文）          |
+| `toast`           | 启用                                                                              | TUI toast 提示（触发/生效的可见标记；`false` 关闭）                               |
 
 ### 8.2.1 白名单 permission 名 ↔ 工具映射
 

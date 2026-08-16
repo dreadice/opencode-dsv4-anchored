@@ -55,17 +55,18 @@ cp dist/index.js <项目>/.opencode/plugins/dsv4-anchored.js
 
 ## 配置
 
-| 选项              | 默认                                     | 说明                                                |
-| ----------------- | ---------------------------------------- | --------------------------------------------------- |
-| `models`          | `["deepseek*v4*"]`                       | 门控模型通配符（providerID/modelID）                |
-| `whitelist`       | `[]`                                     | seeded 期白名单（**0 工具**，实证唯一出 we 的形态） |
-| `anchorText`      | dsh 原文（"This round is a test..."）    | zero 锚定消息；设 `""` 关闭锚定轮                   |
-| `injectSystem`    | 启用                                     | 轮 2 注入去 persona 的真实 system                   |
-| `firstTurnFilter` | `{stripPersona: true}`                   | 注入前选择性剥离（D11）                             |
-| `verify.n`        | `3`                                      | 判别窗口（常量）                                    |
-| `verify.terms`    | 英文 we/let 词表                         | 轨迹标记词表                                        |
-| `probe.ttlMs`     | `300000`                                 | 探针失败旁路 TTL                                    |
-| `probe.cacheDir`  | `~/.local/share/opencode/dsv4-anchored/` | 缓存与状态文件目录                                  |
+| 选项              | 默认                                     | 说明                                                                 |
+| ----------------- | ---------------------------------------- | -------------------------------------------------------------------- |
+| `models`          | `["deepseek*v4*"]`                       | 门控模型通配符（providerID/modelID）                                 |
+| `whitelist`       | `[]`                                     | seeded 期白名单（**0 工具**，实证唯一出 we 的形态）                  |
+| `anchorText`      | dsh 原文（"This round is a test..."）    | zero 锚定消息；设 `""` 关闭锚定轮                                    |
+| `injectSystem`    | 启用                                     | 轮 2 注入去 persona 的真实 system                                    |
+| `firstTurnFilter` | `{stripPersona: true}`                   | 注入前选择性剥离（D11）                                              |
+| `verify.n`        | `3`                                      | 判别窗口（常量）                                                     |
+| `verify.terms`    | 英文 we/let 词表                         | 轨迹标记词表                                                         |
+| `toast`           | 启用                                     | TUI toast 提示（锚定轮/轮 2/解锁/判别/旁路，见 docs/design.md §7.4） |
+| `probe.ttlMs`     | `300000`                                 | 探针失败旁路 TTL                                                     |
+| `probe.cacheDir`  | `~/.local/share/opencode/dsv4-anchored/` | 缓存与状态文件目录                                                   |
 
 ## 验证
 
