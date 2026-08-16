@@ -1,5 +1,5 @@
 {
-  "name": "opencode-dsv4-anchored",
+  "name": "@dreadice/opencode-dsv4-anchored",
   "version": "0.1.0",
   "description": "opencode plugin: anchored tool bootstrap for DeepSeek V4 (port of dsh-anchored-standard)",
   "type": "module",

@@ -50,7 +50,7 @@ opencode 首次加载时自动 clone 并构建（仓库的 `prepare` 脚本会 e
 
 ```json
 {
-  "plugin": [["opencode-dsv4-anchored", {}]]
+  "plugin": [["@dreadice/opencode-dsv4-anchored", {}]]
 }
 ```
 
