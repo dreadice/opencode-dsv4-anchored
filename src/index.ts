@@ -4,6 +4,7 @@ import {systemTransform} from '@/system-transform';
 import {compacting} from '@/compaction';
 import {strReplaceEditor} from '@/str-replace-editor';
 import {loadProbeStore, saveProbeStore} from '@/probe';
+import {DSH_BASH_DESCRIPTION} from '@/bash-description';
 import {makeLogger} from '@/logger';
 import {DEFAULT_TERMS, type VerifyTerms} from '@/verify';
 import type {FirstTurnFilter} from '@/inject';
@@ -93,6 +94,14 @@ export const Dsv4Anchored: Plugin = async ({client}, options) => {
     },
     'experimental.session.compacting': async input => {
       await compacting({client: sdk, logger}, input.sessionID);
+    },
+    'tool.definition': async (input, output) => {
+      // 假 bash（D10 对齐）：把 bash 描述换成 dsh persistent-bash 原文——
+      // 工具 schema 是锚定决定变量（issue #11），execute 仍是 opencode 原生。
+      // dsh 的 bash 描述全程不变（晋升后也是 persistent-bash），无需改回。
+      if (input.toolID === 'bash') {
+        output.description = DSH_BASH_DESCRIPTION;
+      }
     },
   };
 };
