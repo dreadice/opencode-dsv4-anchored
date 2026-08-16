@@ -86,7 +86,9 @@ npm run build        # esbuild bundle → dist/index.js
 ## 发布
 
 - **每次发布 npm 必须前进版本号（语义化版本，semver）**：
-  `npm version patch/minor/major --no-git-tag-version` → `npm publish`
+  `npm version patch/minor/major` → `npm publish`
   （同版本号无法覆盖发布）
-- 版本号 commit 单独提交；发布后打 tag：`git tag <版本号> <commit>`
+- **`npm version` 自动 commit + 打 git tag**（tag 名与版本号一致，无 v 前缀，
+  由 `.npmrc` 的 `tag-version-prefix=` 配置）——无需手动 commit/tag；
+  发布后 `git push --tags` 推送
 - 本地调试用 `scripts/install-local.sh`（npm 包可能是旧版）
