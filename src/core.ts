@@ -10,7 +10,12 @@ import {
   type Stage,
 } from '@/stage';
 import {verifyText, type VerifyTerms} from '@/verify';
-import {hasInjectionMarker, buildInjectionPart} from '@/inject';
+import {
+  hasInjectionMarker,
+  buildInjectionPart,
+  filterFirstTurnSystem,
+  type FirstTurnFilter,
+} from '@/inject';
 import {lastCompactionBoundary} from '@/epoch';
 import type {Logger} from '@/logger';
 
@@ -44,6 +49,8 @@ export type EnsureOptions = {
   verifyN: number;
   verifyTerms: VerifyTerms;
   probeTtlMs: number;
+  /** 首轮注入选择性剥离（D11 备选；默认全量注入）。 */
+  firstTurnFilter?: FirstTurnFilter;
 };
 
 export type EnsureCtx = {
@@ -116,8 +123,11 @@ export async function ensureState(
 
   let injected = false;
   if (!hasInjectionMarker(allParts) && probe.system) {
+    const system = options.firstTurnFilter
+      ? filterFirstTurnSystem(probe.system, options.firstTurnFilter)
+      : probe.system;
     input.outputParts.unshift(
-      buildInjectionPart(probe.system, input.sessionID, input.messageID)
+      buildInjectionPart(system, input.sessionID, input.messageID)
     );
     injected = true;
   }

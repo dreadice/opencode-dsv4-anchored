@@ -6,6 +6,7 @@ import {strReplaceEditor} from '@/str-replace-editor';
 import {loadProbeStore, saveProbeStore} from '@/probe';
 import {makeLogger} from '@/logger';
 import {DEFAULT_TERMS, type VerifyTerms} from '@/verify';
+import type {FirstTurnFilter} from '@/inject';
 import {adaptClient, adaptLog} from '@/sdk-adapter';
 import {join} from 'node:path';
 import {homedir} from 'node:os';
@@ -22,6 +23,7 @@ type Dsv4Options = {
   verifyTerms?: VerifyTerms;
   probeTtlMs?: number;
   cacheDir?: string;
+  firstTurnFilter?: FirstTurnFilter;
 };
 
 function resolveOptions(options?: PluginOptions): EnsureOptions {
@@ -32,6 +34,7 @@ function resolveOptions(options?: PluginOptions): EnsureOptions {
     verifyN: opts.verifyN ?? 3,
     verifyTerms: opts.verifyTerms ?? DEFAULT_TERMS,
     probeTtlMs: opts.probeTtlMs ?? 300_000,
+    firstTurnFilter: opts.firstTurnFilter,
   };
 }
 
