@@ -176,6 +176,10 @@ info.role === "assistant"）触发轮 2，但 busy 窗口下不安全：
 - **TUI 显示**：轮 1 用户消息 = synthetic 锚定 → 隐藏；轮 2 = [synthetic
   user system（隐藏）+ 真实任务（正常显示）]——用户看到真实任务自动发出
   （系统代发，对齐 dsh whoami 体验）。
+- **会话标题（意外收益，round-10 源码核实）**：`ensureTitle`
+  （prompt.ts:193-224）按"含非 synthetic part 的 user 消息"判定真实消息——
+  锚定轮首条消息全 synthetic → 不算真实 → **标题生成自动跳过锚定内容**；
+  轮 2 消息含真实任务 part → 标题基于**真实任务**生成。无需额外处理。
 
 ## 5. 阶段状态机（哨兵 + DB 持久化）
 
