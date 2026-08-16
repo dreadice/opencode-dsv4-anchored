@@ -367,7 +367,7 @@ opencode 官方支持两种插件加载方式（本地文件 / npm 包），互�
 | `injectSystem`    | 启用                                                                              | 轮 2 注入 user system（`false` 关闭，仅锚定 + 真实消息）                          |
 | `firstTurnFilter` | `{stripPersona: true}`                                                            | 注入前选择性剥离（D11；默认去 opencode persona 首句）                             |
 | `verify.n`        | `3`                                                                               | 判别窗口（常量）                                                                  |
-| `verify.terms`    | 英文：we `["we need","we"]`、let `["let me"]`                                   | 轨迹标记词表（round-11：`let's` 非失败信号；中文词表已废弃）                     |
+| `verify.terms`    | 英文：we `["we need","we"]`、let `["let me"]`                                     | 轨迹标记词表（round-11：`let's` 非失败信号；中文词表已废弃）                      |
 | `toast`           | 启用                                                                              | TUI toast 提示（触发/生效的可见标记；`false` 关闭）                               |
 
 ### 8.2.1 白名单 permission 名 ↔ 工具映射
