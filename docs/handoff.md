@@ -510,8 +510,8 @@ decisions.md 术语表 + D5 round-7 修订 + D12、research.md §5.1/§5.2/§5.3
    we ✅；双工具（bash 描述对齐 dsh 后仍）→ standard-like ❌；首轮注入
    任何内容 → 破坏 we。**0 工具是唯一实证 we 形态** → D13 zero-anchored。
 3. **persona 过滤粒度**：stripPersona = 只删身份声明句（`You are opencode,
-   an interactive CLI tool that helps users with software engineering
-   tasks.` 到句号，default.txt 第一行有两句——第二句 "Use the instructions
+an interactive CLI tool that helps users with software engineering
+tasks.` 到句号，default.txt 第一行有两句——第二句 "Use the instructions
    below..." 保留），行为要求/模型名/env/AGENTS/技能/MCP 均保留。
 4. **TUI 关键发现**：`synthetic: true` text part 被 TUI 过滤不显示
    （`tui/src/routes/session/index.tsx:395,636,841`）、模型可见

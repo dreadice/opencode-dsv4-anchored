@@ -417,8 +417,8 @@ pattern:"*", action:"deny"}`（findLast 命中）→ 目录恢复 opencode 自�
   60-63 `data.runners.delete` + `status.set(idle)`）→ `status.ts:43`
   `if (status.type === "idle") publish(Event.Idle, {sessionID})`；
 - SDK 类型：`EventSessionIdle = {type:"session.idle", properties:
-  {sessionID}}`（`types.gen.d.ts:413-417`）；`EventMessageUpdated = {type:
-  "message.updated", properties:{info: Message}}`（`:129-134`，Message 含
+{sessionID}}`（`types.gen.d.ts:413-417`）；`EventMessageUpdated = {type:
+"message.updated", properties:{info: Message}}`（`:129-134`，Message 含
   role/sessionID/parts）；
 - plugin `event` hook input = `{event: Event}`（plugin `index.d.ts:175-177`，
   触发是 fire-and-forget：`void hook["event"]?.(...)`，plugin/index.ts:257）→
@@ -440,7 +440,7 @@ chat.message 触发前已 resolve 完——`prompt.ts:1005-1014`）：
 - `TextPartInput` 支持 `id?/synthetic?/ignored?`（`types.gen.d.ts:1231-1250`）
   → user system part 可直接带 `synthetic: true`；
 - `SessionPromptData.body = {messageID?, model?{providerID,modelID}, agent?,
-  noReply?, system?, tools?, parts[]}`（`types.gen.d.ts:2244+`）。
+noReply?, system?, tools?, parts[]}`（`types.gen.d.ts:2244+`）。
 
 **5. chat.message 时机（消息在 hook 之后才落库）**：`createUserMessage` =
 resolvePart → `plugin.trigger("chat.message")` → `updateMessage(info)` +
@@ -454,6 +454,7 @@ resolvePart → `plugin.trigger("chat.message")` → `updateMessage(info)` +
 推导（不再扫标记），幂等标记（`INJECT_MARKER`）只用于轮 2 的 user system part。
 
 ## 5. 移植方案设计
+
 ### 5.1 状态机（round-7 定案：seeded/unsealed/verified）
 
 ```
@@ -668,10 +669,10 @@ parentID`，但 SDK 类型未声明，需 `as any`（技术债，无用户感知
   `v1/session.ts:286`、prune 标记 `compaction.ts:311`、落库细节 `compaction.ts:480-608`
 - D13 轮 2（round-10）：runner busy 丢弃 runLoop `src/effect/runner.ts:115-138`
   （`ensureRunning`）、`message.updated` 发布时间 `src/session/processor.ts:456,596`
-  + `src/session/session.ts:633`、`session.idle` 发布链路 `runner.ts:70-81` +
-  `src/session/run-state.ts:60-63` + `src/session/status.ts:43`、
-  `createUserMessage` agent/model 推断 `src/session/prompt.ts:637-641,693-697`、
-  parts 重解析 `prompt.ts:700-970`、chat.message 时机 `prompt.ts:1005-1047`、
-  `EventSessionIdle` sdk `types.gen.d.ts:413-417`、`TextPartInput`
-  `types.gen.d.ts:1231-1250`、event hook fire-and-forget
-  `src/plugin/index.ts:257`
+  - `src/session/session.ts:633`、`session.idle` 发布链路 `runner.ts:70-81` +
+    `src/session/run-state.ts:60-63` + `src/session/status.ts:43`、
+    `createUserMessage` agent/model 推断 `src/session/prompt.ts:637-641,693-697`、
+    parts 重解析 `prompt.ts:700-970`、chat.message 时机 `prompt.ts:1005-1047`、
+    `EventSessionIdle` sdk `types.gen.d.ts:413-417`、`TextPartInput`
+    `types.gen.d.ts:1231-1250`、event hook fire-and-forget
+    `src/plugin/index.ts:257`

@@ -180,17 +180,17 @@ info.role === "assistant"）触发轮 2，但 busy 窗口下不安全：
 
 无内存状态，靠 session permission 规则判定：
 
-| 阶段     | 判定               | 行为                                                                             |
-| -------- | ------------------ | -------------------------------------------------------------------------------- |
-| pristine | 无哨兵规则         | `chat.message` ensure → 注入 + seeded（追加规则）                                |
-| seeded   | 哨兵 `seeded`      | 注入成功；解锁信号（边界后 assistant 消息/工具调用）→ 解锁；判别进行中（N=3 轮） |
+| 阶段     | 判定          | 行为                                                                             |
+| -------- | ------------- | -------------------------------------------------------------------------------- |
+| pristine | 无哨兵规则    | `chat.message` ensure → 注入 + seeded（追加规则）                                |
+| seeded   | 哨兵 `seeded` | 注入成功；解锁信号（边界后 assistant 消息/工具调用）→ 解锁；判别进行中（N=3 轮） |
 
 - 注（zero 形态，§4.5）：seeded 即锚定轮已完成（锚定消息已发、真实消息在
   pending）；锚定回复落库后由 event/sendRound2 发轮 2，轮 2 消息的 ensure
   完成解锁。
-| unsealed | 哨兵 `unsealed`    | 已解锁（seeded 的内部变体，防重复解锁）；判别进行中                              |
-| verified | 哨兵 `verified`    | 判别通过（模型输出特征达成，成功标记）；不再解锁/判别                            |
-| bypass   | key failed（缓存） | 全部 hook 原样放行（key 级判定，无哨兵）                                         |
+  | unsealed | 哨兵 `unsealed` | 已解锁（seeded 的内部变体，防重复解锁）；判别进行中 |
+  | verified | 哨兵 `verified` | 判别通过（模型输出特征达成，成功标记）；不再解锁/判别 |
+  | bypass | key failed（缓存） | 全部 hook 原样放行（key 级判定，无哨兵） |
 
 - 哨兵 = 插件自造规则 `{permission:"__dsv4_stage__", pattern:<阶段>,
 action:"allow"}`（不匹配任何真实工具，惰性；`findLast` 取阶段）。
@@ -221,9 +221,9 @@ action:"allow"}`（不匹配任何真实工具，惰性；`findLast` 取阶段�
   `we`）与 let 系词（`let me`/`let's`）的位置；**`idx(we系) < idx(let系)` 即
   通过**（let 系不出现 = +∞，we 系存在即通过；we 系不出现则不通过）。贴合
   dsh"首行 `We need…`"语义（思维起步取向），对 `let me` 少量出现鲁棒（dsh
-   r1 实测 let me=1 仍为 minimal 轨迹）。词表可配置（§8.2 `verify.terms`）；
-   中文词表曾为实验项——round-9 起 zero 方案锚定回复恒英文、中文词表移除
-   （`ZH_TERMS` 已删，round-10）。
+  r1 实测 let me=1 仍为 minimal 轨迹）。词表可配置（§8.2 `verify.terms`）；
+  中文词表曾为实验项——round-9 起 zero 方案锚定回复恒英文、中文词表移除
+  （`ZH_TERMS` 已删，round-10）。
 - compaction 回退（**D5 修订，对齐 dsh compactionTools**）：`experimental.session.compacting`
   hook（`compaction.ts:373`，input 含 `sessionID`，无 session.compacted 事件）
   触发 → 追加 `deny *` + minimal 对 + **compactionTools**（read/glob/grep/edit/
@@ -302,7 +302,7 @@ logError`（`handlers/control.ts:28-39`）；级别仅 debug/info/warn/error，
 | bypass              | warn | key、reason                                                                         | —                     |
 | system.transform    | info | sessionID、gating、action(replace/passthrough)、beforeLen、afterLen、beforeHash     | 替换前后全文          |
 | unlock              | info | sessionID、agentRuleset 条数、排除 denies、哨兵 unsealed                            | 完整 ruleset 追加列表 |
-| round2.sent         | info | sessionID、partCount、sysInjected(是否含 user system part)                          | 轮 2 完整 parts        |
+| round2.sent         | info | sessionID、partCount、sysInjected(是否含 user system part)                          | 轮 2 完整 parts       |
 | round2.fail         | warn | sessionID、error（pending 已恢复，ensure 补发兜底）                                 | —                     |
 | verify.passed       | info | sessionID、判别消息 id、特征摘要（首行、letMe 计数）                                | 判别消息全文          |
 | verify.giveup       | warn | sessionID、已检轮数 N                                                               | —                     |
@@ -327,15 +327,15 @@ logError`（`handlers/control.ts:28-39`）；级别仅 debug/info/warn/error，
 
 ### 8.2 配置项（插件 options）
 
-| 项             | 默认                                                  | 说明                                                                                                 |
-| -------------- | ----------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
-| `models`       | `["deepseek*v4*"]`                                    | 门控模型通配符                                                                                       |
-| `whitelist`    | `[]`                                                  | seeded 期白名单（**round-10 起 zero 形态：0 工具**，对齐 dsh zero-anchored 实测）                    |
-| `anchorText`   | `"This round is a test. Tools are not open yet; all tools will open next round."` | zero-anchored 锚定消息（dsh 原文；设为 `""` 关闭锚定轮，退回旧形态）                  |
-| `injectSystem` | 启用                                                  | 轮 2 注入 user system（`false` 关闭，仅锚定 + 真实消息）                                             |
-| `firstTurnFilter` | `{stripPersona: true}`                            | 注入前选择性剥离（D11；默认去 opencode persona 首句）                                                |
-| `verify.n`     | `3`                                                   | 判别窗口（常量）                                                                                     |
-| `verify.terms` | 英文：we `["we need","we"]`、let `["let me","let's"]` | 轨迹标记词表（round-10：中文实验词表 `ZH_TERMS` 已移除——锚定回复恒英文）                            |
+| 项                | 默认                                                                              | 说明                                                                              |
+| ----------------- | --------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| `models`          | `["deepseek*v4*"]`                                                                | 门控模型通配符                                                                    |
+| `whitelist`       | `[]`                                                                              | seeded 期白名单（**round-10 起 zero 形态：0 工具**，对齐 dsh zero-anchored 实测） |
+| `anchorText`      | `"This round is a test. Tools are not open yet; all tools will open next round."` | zero-anchored 锚定消息（dsh 原文；设为 `""` 关闭锚定轮，退回旧形态）              |
+| `injectSystem`    | 启用                                                                              | 轮 2 注入 user system（`false` 关闭，仅锚定 + 真实消息）                          |
+| `firstTurnFilter` | `{stripPersona: true}`                                                            | 注入前选择性剥离（D11；默认去 opencode persona 首句）                             |
+| `verify.n`        | `3`                                                                               | 判别窗口（常量）                                                                  |
+| `verify.terms`    | 英文：we `["we need","we"]`、let `["let me","let's"]`                             | 轨迹标记词表（round-10：中文实验词表 `ZH_TERMS` 已移除——锚定回复恒英文）          |
 
 ### 8.2.1 白名单 permission 名 ↔ 工具映射
 
