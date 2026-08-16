@@ -35,18 +35,7 @@
 三种方式任选其一（**互斥，勿同时使用**——`.opencode/plugins/*.js` 与
 `plugin` 配置同时存在会双加载，chat.message 触发两次）：
 
-**1. Git 引用（推荐，开箱即用）**——opencode.json：
-
-```json
-{
-  "plugin": [["github:dreadice/opencode-dsv4-anchored", {}]]
-}
-```
-
-opencode 首次加载时自动 clone 并构建（仓库的 `prepare` 脚本会 esbuild
-打包 `dist/index.js`），`exports["./server"]` 指向插件入口。
-
-**2. npm 包**（发布后）：
+**1. npm 包（推荐，开箱即用）**——opencode.json：
 
 ```json
 {
@@ -54,7 +43,7 @@ opencode 首次加载时自动 clone 并构建（仓库的 `prepare` 脚本会 e
 }
 ```
 
-**3. 本地**：
+**2. 本地**：
 
 ```bash
 npm run build                 # esbuild bundle → dist/index.js
@@ -63,8 +52,21 @@ cp dist/index.js <项目>/.opencode/plugins/dsv4-anchored.js
 # "plugin": [["/path/to/opencode-dsv4-anchored", {}]]
 ```
 
-> 要求：opencode `>= 1.18.18`（`engines.opencode` 兼容检查）。git/npm 安装
-> 需要 opencode 能访问 npm registry / GitHub。
+**3. Git 引用（⚠️ v1.18.18 实测不可用）**：
+
+```json
+{
+  "plugin": [["github:dreadice/opencode-dsv4-anchored", {}]]
+}
+```
+
+> 已验证（2026-08-16）：opencode 1.18.18 的插件安装器（`Npm.add`/Arborist）
+> 对 git spec 安装失败——缓存目录创建但为空、插件静默不加载、消息按原生处理，
+> 无错误日志。所有 git 格式（`github:` / `git+https:` / `user/repo`）在 npa
+> 解析下 `name` 均为 undefined，都会走同一条失败路径。用 npm 包方式替代，
+> 待 opencode 修复后此方式再启用。
+
+> 要求：opencode `>= 1.18.18`（`engines.opencode` 兼容检查）。
 
 ## 配置
 
