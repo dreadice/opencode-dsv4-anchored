@@ -8,6 +8,7 @@
 项目目录：`/home/liubohan/opencode/dsv4-adapter`（git 已初始化，`.gitignore` 含
 `reference/`、`node_modules/`、`dist/`）。
 当前状态：**P0~P3 完成、P4 主体完成（flash-free 真机验证）**：
+
 - 实现：verify/gate/stage/inject/epoch/cache/probe/logger/core/system-transform/
   compaction/str-replace-editor/sdk-adapter/index（82 测试全绿 + typecheck + lint）
 - 真机：探针捕获→注入→system 替换 minimal→解锁→giveup 全链路通（TC-3-1~6,9 ✅）
