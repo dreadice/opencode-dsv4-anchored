@@ -5,7 +5,9 @@ export type VerifyTerms = {
 
 export const DEFAULT_TERMS: VerifyTerms = {
   we: ['we need', 'we'],
-  let: ['let me', "let's"],
+  // round-11：只有 `let me` 是抢跑信号（dsh 实测 let's 大量出现仍锚定成功——
+  // README 表格 we/let's/let me 三列独立统计，成功标准仅 let me=0）
+  let: ['let me'],
 };
 
 function escapeRe(s: string): string {
