@@ -20,6 +20,10 @@
     文本设置一个简单标题，跳过 `ensureTitle`。
   - 若需要保留 AI 标题，需让标题生成上下文排除 synthetic 注入块（opencode
     目前 `ensureTitle` 会包含该 user 消息的全部 parts，插件侧较难干净过滤）。
+  - **已确认不可行**：opencode 没有暴露“标题生成请求的 messages” hook——
+    title 走 `llm.stream` 直接调用，只触发 `system.transform` / `chat.params` /
+    `chat.headers`，没有 `messages.transform` / `chat.message`。因此无法在
+    title 请求里注入/删除第二个 part 来屏蔽 synthetic 注入块。
 
 ## ISSUE-002: 轮 2 toast 时机误导 + verified 要等下一次用户消息
 
