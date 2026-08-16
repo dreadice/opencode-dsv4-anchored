@@ -282,8 +282,8 @@ action:"allow"}`（不匹配任何真实工具，惰性；`findLast` 取阶段�
   `stage === "unsealed"` 注入分支为后续消息 / resume 兜底（历史无幂等标记即
   注入）。
 - 注入内容 = **探针捕获的 system 全量** + 幂等标记文本（如
-  `[dsv4-anchored:injected]:agent:modelID`，round-12 起带 agent/model 指纹；
-  旧 `INJECT_MARKER` 仍作为前缀兼容）。
+  `[dsv4-anchored:injected]:agent:modelID`，round-12 起带 agent/model 指纹）。
+  旧版无指纹标记不兼容处理：旧会话切换/继续时可能多注入一次，新会话不受影响。
 - resume 判定：扫 session 历史 parts 中是否已有标记 → 已注入则不再注入。
 - **compaction 后重注入**：注入内容被压缩掉 → 回退 seeded 后注入判定统一为
   "历史无幂等标记即注入" → 自动重注入（对齐 dsh 每轮注入的语义，信息不丢）。
