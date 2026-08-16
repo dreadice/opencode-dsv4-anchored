@@ -4,6 +4,10 @@
   "description": "opencode plugin: anchored tool bootstrap for DeepSeek V4 (port of dsh-anchored-standard)",
   "type": "module",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/dreadice/opencode-dsv4-anchored.git"
+  },
   "exports": {
     "./server": {
       "import": "./dist/index.js"
@@ -19,6 +23,7 @@
     "typecheck": "tsc --noEmit",
     "prebuild": "prettier --write .",
     "build": "esbuild src/index.ts --bundle --platform=node --format=esm --alias:@=./src --outfile=dist/index.js",
+    "prepare": "npm run build",
     "test": "tsx --test \"test/*.test.ts\"",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",

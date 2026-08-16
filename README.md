@@ -32,23 +32,39 @@
 
 ## 安装
 
-```bash
-npm run build                 # esbuild bundle → dist/index.js
-cp dist/index.js <项目>/.opencode/plugins/dsv4-anchored.js
-```
+三种方式任选其一（**互斥，勿同时使用**——`.opencode/plugins/*.js` 与
+`plugin` 配置同时存在会双加载，chat.message 触发两次）：
 
-或通过 opencode.json 的 `plugin` 配置指向包目录：
+**1. Git 引用（推荐，开箱即用）**——opencode.json：
 
 ```json
 {
-  "plugin": [["/path/to/opencode-dsv4-anchored", {}]]
+  "plugin": [["github:dreadice/opencode-dsv4-anchored", {}]]
 }
 ```
 
-> 注意：**二选一**——`.opencode/plugins/*.js` 与 `plugin` 配置同时存在会双加载
-> （chat.message 触发两次）。
+opencode 首次加载时自动 clone 并构建（仓库的 `prepare` 脚本会 esbuild
+打包 `dist/index.js`），`exports["./server"]` 指向插件入口。
 
-要求：opencode `>= 1.18.18`。
+**2. npm 包**（发布后）：
+
+```json
+{
+  "plugin": [["opencode-dsv4-anchored", {}]]
+}
+```
+
+**3. 本地**：
+
+```bash
+npm run build                 # esbuild bundle → dist/index.js
+cp dist/index.js <项目>/.opencode/plugins/dsv4-anchored.js
+# 或把仓库路径写进配置：
+# "plugin": [["/path/to/opencode-dsv4-anchored", {}]]
+```
+
+> 要求：opencode `>= 1.18.18`（`engines.opencode` 兼容检查）。git/npm 安装
+> 需要 opencode 能访问 npm registry / GitHub。
 
 ## 配置
 
