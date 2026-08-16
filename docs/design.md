@@ -15,32 +15,32 @@
 
 ## 2. 方案总览
 
-多个 hook 协作，形成"首轮注入 → 工具解锁 → 特征验证"闭环：
+多个 hook 协作，形成"锚定轮 → 真实任务轮 → 特征验证"闭环：
 
 ```
-首轮（模型门控命中 deepseek*v4*）
-  ├─ 探针：静默建临时会话、用同 agent+model 发一次请求，
-  │   在 system.transform hook 内捕获组装好的真实 system → throw 零 token 终止
-  │   → 缓存 (directory, agent, modelID, 日期)，失败则按 key 旁路
-  ├─ system.transform：真实会话 → 整体替换为纯 Minimal persona（每轮持续）
-  ├─ chat.message：ensure 状态（seeded 规则）+ 首轮注入
-  │   （探针捕获的 system 全量 prepend 到首条 user 消息 parts 最前）
-  └─ 解锁信号（边界后出现 assistant 消息/工具调用）
-       → 解锁：merge 追加 agent ruleset + session denies + 哨兵 unsealed
-       └─ 特征判别（N=3 轮内：首行 We… 风格 + let me=0，dsh README 特征）
-            → 达成：哨兵 verified（成功标记）
+轮 1（模型门控命中 deepseek*v4*，zero-anchored 锚定轮）：
+  ├─ 探针：静默捕获真实 system → 缓存（供轮 2 注入；失败按 key 旁路）
+  ├─ system.transform：整体替换为纯 Minimal persona（每轮持续）
+  ├─ chat.message：真实消息存盘 pending → parts 替换为锚定消息
+  │   （synthetic → TUI 隐藏、模型可见）→ seeded 规则（0 工具）
+  └─ 锚定回复落库（assistant 消息 = 晋升信号）
+       → event（message.updated）自动 session.prompt 发轮 2
+轮 2（真实任务轮）：
+  ├─ chat.message ensure：解锁（agent ruleset + session denies + 哨兵 unsealed）
+  ├─ 注入 user system（探针捕获 → 去 opencode persona 首句）在前
+  │   + 真实任务消息在后（synthetic 隐藏 system 块）
+  └─ 模型带全量工具处理真实任务
+  └─ 特征判别（N=3 轮内：idx(we系) < idx(let系)）→ 达成：哨兵 verified
 ```
 
-- **seeded（注入成功）**：system 只有一行 persona；工具由信号自动解锁
-  （请求 #1 受限目录 → 信号落库 → 请求 #2 全量，与判别解耦）——解锁时
-  追加 agent ruleset + session denies + `str_replace_editor: deny`
-  （隐藏插件工具，§8.2.2）；原 system 全部内容作为首条 user 消息的一部分
-  进对话历史（信息不丢）。
-- **verified（判别通过）**：模型输出特征达成（首行 `We…` 风格 + `let me`=0）
-  的成功标记（哨兵持久化）；工具状态已由解锁决定（自然 ruleset 全量 +
-  str_replace_editor 隐藏）；system 仍保持 minimal；不再注入、不再探针、
-  不再判别。
-- **旁路（探针失败）**：不替换、不注入、不 seeded，会话完全原生。
+- **锚定轮**：system 只有一行 persona；**0 工具**（对齐 dsh zero-anchored，
+  实测 v4-pro + minimal + 0 工具 → we 风格首答 ✓）；真实消息推迟（§4.5）。
+- **解锁后（轮 2）**：工具按 agent ruleset 全量恢复（str_replace_editor 被
+  追加 deny 隐藏，§8.2.2）；注入去 persona 的原始 system（信息不丢：
+  行为要求/env/AGENTS/技能/MCP 保留）；system 仍保持 minimal。
+- **verified（判别通过）**：模型输出特征达成（we 系先于 let 系）的成功标记
+  （哨兵持久化）；未达成 N=3 轮 → giveup（warn 一次，不锁死）。
+- **旁路（探针失败）**：不替换、不锚定、不注入、不 seeded，会话完全原生。
 - **状态**：全部持久化（permission 哨兵 + 缓存文件），重启/resume/compaction
   可还原。
 
@@ -109,6 +109,49 @@ chat.message（真实会话 S，首轮）
 - 失败标记可展示：状态文件 `probe-cache.json` 含 `{key, status:"failed",
 error, ts}` 条目，可 cat 查看；日志打 bypass 事件。
 - **自组装 fallback 取消**：不再维护 ~95% 忠实的近似组装。
+
+## 4.5 时序：zero-anchored 锚定轮 + 真实消息推迟（round-9 定案）
+
+> 对齐 dsh whoami/zero-anchored：真实消息**不参与首轮**（首轮只有锚定消息），
+> 锚定回复落库（晋升信号）后**自动发出**轮 2（user system + 真实消息）。
+> opencode 无 next-turn 队列 → 用"pending 存盘 + event 自动 prompt"实现。
+
+```
+轮 1（用户首条消息）：
+  chat.message（落库前，prompt.ts:999-1047）
+    ├─ 探针捕获 system（缓存 key，供轮 2 注入；零 token）
+    ├─ 真实消息 parts → 存盘 pending（sessionID → parts JSON，probe-cache 同目录）
+    ├─ output.parts 替换为 [锚定消息 part（synthetic: true）]
+    │    · TUI 隐藏：tui routes/session/index.tsx:395 过滤 synthetic part
+    │    · 模型可见：message-v2.ts:198-201 只滤 ignored/空文本
+    │    → 模型只看到锚定消息 → we 风格回复（实测 ✓）
+    └─ seeded 规则（whitelist: [] → 0 工具）
+  锚定回复落库（assistant 消息 = 晋升信号）
+  event hook（message.updated，info.role === "assistant"）
+    └─ 查 pending：存在 → client.session.prompt 自动发轮 2：
+       parts = [user system part（探针捕获 → filterFirstTurnSystem 去 persona，
+       synthetic: true TUI 隐藏）... pending 真实消息 parts]
+       （不带 tools → 不替换 permission；新消息 id 单调 id/id.ts:51-70 →
+       排在锚定消息后）→ 清 pending
+轮 2（prompt 消息入库，自动触发 chat.message ensure）：
+    ├─ stage=seeded + 历史有 assistant 信号 → unlock（全量工具 + 哨兵 unsealed）
+    └─ 模型带全量工具处理真实任务
+```
+
+**竞态与边界**：
+
+- **bypass（探针失败）**：不替换 parts、不存 pending——真实消息原样发出
+  （原生行为，锚定不生效）。
+- **prompt 防重**：prompt 前先清 pending（磁盘删除），message.updated 多次
+  触发（每 part 更新）不重复发。
+- **重启悬挂**：pending 落盘但 event 不重放历史 → ensure 时若 pending 存在且
+  边界后已有 assistant 消息（锚定已完成）→ 补发 prompt。
+- **prompt 触发 chain**：session.prompt 消息入库 → chat.message 触发 → ensure
+  （探针会话跳过逻辑只认 probeSessions，真实会话正常）→ unlock 在本次生效
+  （await 内）。
+- **TUI 显示**：轮 1 用户消息 = synthetic 锚定 → 隐藏；轮 2 = [synthetic
+  user system（隐藏）+ 真实任务（正常显示）]——用户看到真实任务自动发出
+  （系统代发，对齐 dsh whoami 体验）。
 
 ## 5. 阶段状态机（哨兵 + DB 持久化）
 

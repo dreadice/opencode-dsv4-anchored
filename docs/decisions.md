@@ -365,7 +365,38 @@ header tools 数量异常），则启用备选；达标则维持现状。
 `seeded`；判别失败不锁死（仅 stop + warn）；实现从信号 hook 改为 chat.message
 统一判定，简化一半逻辑。
 
-## 已确认的机制前提（实现时依赖）
+## D13: zero-anchored 锚定轮 + 真实消息推迟（Decided, 2026-08-16 round-9）
+
+
+**背景**：实测（deepseek 官方 v4-pro + variant max）：
+
+- minimal system + **0 工具** → thinking **we 风格**（"We need answer..."）✅
+- minimal + **双工具**（含 bash 描述对齐 dsh 后）→ standard-like（"The user
+  wants.../Let me"）❌ —— opencode 环境复现不了 dsh Anchored Standard 的
+  双工具锚定（bash 参数 schema/消息结构差异），**0 工具是唯一实证出 we 的
+  形态**。
+- 首轮注入任何内容（即使 stripPersona）→ 破坏 we 锚定。
+- opencode persona（`You are opencode, ...`）**曾未替换成功**（`output.system =
+  [...]` 重赋值不生效——`plugin.trigger` 忽略返回值，request.ts 用局部数组
+  引用；必须 `splice` 原地改）——已修复（D13 前置 fix）。
+
+**决定（对齐 dsh zero-anchored/whoami）**：
+
+- 锚定轮（轮 1）：minimal persona + **0 工具**（`whitelist: []`）+ **只有锚定
+  消息**（真实消息推迟）；锚定消息 = `synthetic: true` text part（TUI 隐藏
+  `tui/index.tsx:395`、模型可见 `message-v2.ts:198-201`）。
+- **真实消息推迟**：首轮 chat.message 把真实 parts 存盘 pending（sessionID →
+  parts），parts 替换为锚定消息；锚定回复落库（assistant 消息 = 晋升信号）
+  → `event`（message.updated）自动 `session.prompt` 发轮 2：
+  `[user system（去 persona，synthetic）+ 真实消息]`（不带 tools）。
+- 轮 2 消息触发 chat.message ensure → 解锁（全量工具）+ 注入 user system
+  （`filterFirstTurnSystem`：去 `You are opencode, ...` 首句，保留行为要求/
+  env/AGENTS/技能/MCP）。
+- 竞态：bypass 不替换不存 pending（真实消息原样）；prompt 防重（发前清
+  pending）；重启悬挂 → ensure 补发。完整时序见 design.md §4.5。
+
+**影响**：首轮多一轮模型调用（锚定轮），对齐 dsh whoami 的代价；TUI 轮 1
+用户消息隐藏、轮 2 真实任务自动出现（系统代发）。
 
 | 机制                                                                                                                                                | 来源                                                                       |
 | --------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
@@ -381,3 +412,22 @@ header tools 数量异常），则启用备选；达标则维持现状。
 | `client.session.get` wire 返回全量 `Session.Info`（parentID/permission/agent/model），SDK 类型未声明需 `as any`                                     | `.../session/session.ts:224-244`                                           |
 | `client.app.agents()` 返回全部 agent（含内置）的 `prompt` 与 `permission`；`client.config.get` 不含内置 agent                                       | `.../handlers/instance.ts:80-81`；`.../agent/agent.ts:44,52`               |
 | dsh 零工具锚定轮实现：`anchor-turn.mjs`（prepend 锚定消息）+ `zero-tool-bootstrap.mjs`（剥全目录 + pre-step 按 `source.kind` 剥离上下文）           | `reference/dsh-anchored-standard/zero-anchored-standard/`                  |
+
+## 已确认的机制前提（实现时依赖）
+
+| 机制 | 来源 |
+| --- | --- |
+| 工具可见性由 permission ruleset 控制，`findLast` 后写覆盖；`merge` = 按序拼接，agent 规则在前、session 规则在后 | `reference/opencode/.../permission/index.ts:28,204`；`session/tools.ts:87` |
+| `client.session.update` merge 追加、DB 持久化（重启不丢） | `.../handlers/session.ts:194` |
+| `chat.message` 在消息落库前触发、trigger 返回值丢弃但 `output.parts` 同引用可原地改写；hook 后 runLoop 从 DB 重读消息 → 注入进本次请求 | `.../session/prompt.ts:999,1046,1092`；`.../plugin/index.ts:282` |
+| `experimental.chat.messages.transform` input 为 `{}`，无法按会话/模型门控 | `.../session/prompt.ts:1255` |
+| `client.session.prompt` 新消息 id 单调递增（排在本消息后）；带 `tools` 会整体替换 session.permission | `.../id/id.ts:51-70`；`.../session/prompt.ts:1060` |
+| `experimental.chat.system.transform` 的 input 含 `model`，可按模型门控；触发时 system 已被 join 成单条字符串；**output.system 必须 splice 原地改**（trigger 忽略返回值，request.ts:69-78 用局部数组引用） | `.../session/llm/request.ts:69,58-66`；`.../plugin/index.ts:282-296` |
+| 解锁信号（边界后 assistant 消息/工具调用）持久化在历史，`chat.message` 每轮扫历史即可（round-7：不用 `tool.execute.before`/`message.updated` hook 做信号） | `.../session/prompt.ts:999`；schema `.../v1/session.ts:597` |
+| `event` hook 存在：`message.updated` payload `{type, properties:{info: Message}}`（含 role）——D13 用于锚定回复落库后自动 prompt 轮 2 | plugin `index.d.ts:175`；sdk `types.gen.d.ts:129-134` |
+| synthetic text part：TUI 过滤（不显示），模型可见（message-v2.ts 只滤 ignored/空文本）——D13 锚定消息/注入块用 synthetic 隐藏 | `tui/src/routes/session/index.tsx:395,636,841`；`session/message-v2.ts:198-201` |
+| subagent 创建带 `parentID` + 派生 deny（task/todowrite/primary_tools）；`session.created` 对 subagent 同样触发；`subagent_depth` 默认 1 挡嵌套 | `.../tool/task.ts:104-172`；`.../agent/subagent-permissions.ts:14-27` |
+| subagent 默认上下文 = agent.prompt + AGENTS.md + skills（与主会话相同，无 parentID 分支）；模型继承父会话 | `.../session/prompt.ts:1257-1269`；`.../tool/task.ts:181-184` |
+| `client.session.get` wire 返回全量 `Session.Info`（parentID/permission/agent/model），SDK 类型未声明需 `as any` | `.../session/session.ts:224-244` |
+| `client.app.agents()` 返回全部 agent（含内置）的 `prompt` 与 `permission`；`client.config.get` 不含内置 agent | `.../handlers/instance.ts:80-81`；`.../agent/agent.ts:44,52` |
+| dsh 零工具锚定轮实现：`anchor-turn.mjs`（prepend 锚定消息）+ `zero-tool-bootstrap.mjs`（剥全目录 + pre-step 按 `source.kind` 剥离上下文） | `reference/dsh-anchored-standard/zero-anchored-standard/` |
