@@ -229,16 +229,17 @@ action:"allow"}`（不匹配任何真实工具，惰性；`findLast` 取阶段�
   符合则第二轮不再判，以此类推）；窗口内 N 条全部不符合 → 停止判别
   （`verify.giveup` warn 日志，进程内 Map 去重每进程一次），**保留当前状态**
   （不加失败标记）。
-- **轨迹标记判别（round-7/8 定案）**：判别对象 = assistant 消息的
+- **轨迹标记判别（round-7/8 定案，round-11 修订）**：判别对象 = assistant 消息的
   `reasoning` part（`type:"reasoning"`，`v1/session.ts:118-128`，思维链）+
   `text` part 拼接全文（dsh 实测 `we`/`let me` 计数远超可见回复数 → 特征主要
   在思维链里）。标准 = **首个轨迹标记**：找全文第一个 we 系词（`we need`/
-  `we`）与 let 系词（`let me`/`let's`）的位置；**`idx(we系) < idx(let系)` 即
+  `we`）与 let 系词（`let me`）的位置；**`idx(we系) < idx(let系)` 即
   通过**（let 系不出现 = +∞，we 系存在即通过；we 系不出现则不通过）。贴合
   dsh"首行 `We need…`"语义（思维起步取向），对 `let me` 少量出现鲁棒（dsh
-  r1 实测 let me=1 仍为 minimal 轨迹）。词表可配置（§8.2 `verify.terms`）；
-  中文词表曾为实验项——round-9 起 zero 方案锚定回复恒英文、中文词表移除
-  （`ZH_TERMS` 已删，round-10）。
+  r1 实测 let me=1 仍为 minimal 轨迹）。**`let's` 不是失败信号**（dsh README
+  实测表 we/let's/let me 三列独立统计、锚定成功标准仅 `let me`=0）。词表可配置
+  （§8.2 `verify.terms`）；中文词表**已废弃**（round-11：zero 方案锚定回复
+  恒英文，`ZH_TERMS` 已删）。
 - compaction 回退（**D5 修订，对齐 dsh compactionTools**）：`experimental.session.compacting`
   hook（`compaction.ts:373`，input 含 `sessionID`，无 session.compacted 事件）
   触发 → 追加 `deny *` + minimal 对 + **compactionTools**（read/glob/grep/edit/
@@ -366,7 +367,7 @@ opencode 官方支持两种插件加载方式（本地文件 / npm 包），互�
 | `injectSystem`    | 启用                                                                              | 轮 2 注入 user system（`false` 关闭，仅锚定 + 真实消息）                          |
 | `firstTurnFilter` | `{stripPersona: true}`                                                            | 注入前选择性剥离（D11；默认去 opencode persona 首句）                             |
 | `verify.n`        | `3`                                                                               | 判别窗口（常量）                                                                  |
-| `verify.terms`    | 英文：we `["we need","we"]`、let `["let me","let's"]`                             | 轨迹标记词表（round-10：中文实验词表 `ZH_TERMS` 已移除——锚定回复恒英文）          |
+| `verify.terms`    | 英文：we `["we need","we"]`、let `["let me"]`                                   | 轨迹标记词表（round-11：`let's` 非失败信号；中文词表已废弃）                     |
 | `toast`           | 启用                                                                              | TUI toast 提示（触发/生效的可见标记；`false` 关闭）                               |
 
 ### 8.2.1 白名单 permission 名 ↔ 工具映射

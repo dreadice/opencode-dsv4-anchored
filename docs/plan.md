@@ -112,10 +112,11 @@ P0 基础设施 ─▶ P1 L1 纯函数+TDD ─▶ P2 L2 fake client 集成 ─�
   - `text.toLowerCase()` → 找 we 系/let 系**最早出现位置**：
     - 词含非 ASCII（中文）→ `indexOf`（无词边界）
     - ASCII 词 → 正则 `(?<![a-z])<escaped>(?![a-z'])`（排除前/后字母与撇号：
-      `weave`/`we've` 不命中，`we`/`let's` 正常）
+      `weave`/`we've` 不命中，`we` 正常）
   - `weIdx===-1` → false；`letIdx===-1` → true；否则 `weIdx < letIdx`
-- `DEFAULT_TERMS = { we:["we need","we"], let:["let me","let's"] }`
-- `ZH_TERMS = { we:["我们"], let:["让我","我来","我先"] }`（实验）
+- `DEFAULT_TERMS = { we:["we need","we"], let:["let me"] }`（round-11：
+  `let's` 非失败信号）
+- `ZH_TERMS`（中文词表）**已废弃删除**（round-10/11：锚定回复恒英文）
 
 测试（TC-1-17~27，含大小写/词边界/中文/混合拼接）：
 

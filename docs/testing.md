@@ -77,7 +77,7 @@ resume：`opencode run -s <sessionID> "继续"`；门控对照：`--model anthro
 ### 3.4 轨迹标记判别 `verifyText(text, terms)`
 
 输入 = `reasoning` part text + `text` part text 拼接。词表默认
-`we:["we need","we"], let:["let me","let's"]`。
+`we:["we need","we"], let:["let me"]`（round-11：`let's` 不是失败信号）。
 
 | 用例    | 文本                                              | 期望                                      |
 | ------- | ------------------------------------------------- | ----------------------------------------- |

@@ -352,14 +352,17 @@ header tools 数量异常），则启用备选；达标则维持现状。
   停止**判别（第一轮符合则第二轮不再判，以此类推）；窗口内 N 条全部不符合 →
   停止判别（`verify.giveup` warn，进程内 Map 去重每进程一次），**保留当前状态**
   （不加失败标记）。
-- **轨迹标记判别（round-7/8 定案）**：判别对象 = `reasoning` part +
-  `text` part 拼接全文（`v1/session.ts:118-128`，dsh 特征主要在思维链）。
+- **轨迹标记判别（round-7/8 定案，round-11 修订）**：判别对象 = `reasoning`
+  part + `text` part 拼接全文（`v1/session.ts:118-128`，dsh 特征主要在思维链）。
   标准 = **首个轨迹标记**：`idx(we系) < idx(let系)` 即通过（let 系不出现 =
   +∞，we 系存在即通过；we 系不出现则不通过）——贴合 dsh"首行 `We need…`"
   （思维起步取向），对 `let me` 少量出现鲁棒（dsh r1 let me=1 仍 minimal）。
-  词表可配置（`verify.terms`，默认英文 `we:["we need","we"]`、`let:
-["let me","let's"]`）；中文词表（`我们` vs `让我`/`我来`/`我先`）实验性：
-  标记不稳定，判别失败即 giveup，不锁死。
+  词表可配置（`verify.terms`，默认英文 `we:["we need","we"]`、`let:["let me"]`
+  ——**round-11 修订：`let's` 不是失败信号**，dsh README 实测表
+  we/let's/let me 三列独立统计、锚定成功标准仅 `let me`=0，`let's` 大量出现
+  仍锚定成功）；~~中文词表（`我们` vs `让我`/`我来`/`我先`）~~——
+  **已废弃（round-11）**：zero 方案锚定消息/回复恒英文，中文词表不再需要，
+  `ZH_TERMS` 已删（round-10）、实验思路废弃。
 - **解锁/判别收敛到 `chat.message` ensure**：信号持久化在历史，每轮扫历史即可
   ——`tool.execute.before` / `message.updated` 信号 hook 整个移除（天然幂等、
   覆盖 resume 与失败重试，与 dsh"从持久 event 推导"一致）。
