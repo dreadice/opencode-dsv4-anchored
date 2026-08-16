@@ -4,6 +4,20 @@ import {cacheKey} from '@/cache';
 /** 探针终止消息：必须避开 opencode retry 禁词（`retry.ts:33-40`），否则会被重试。 */
 export const PROBE_THROW_MESSAGE = 'DSV4 probe: capture complete';
 
+/**
+ * 探针终止错误：`DOMException(..., "AbortError")`——processor 的 fromError
+ * 会把它映射成 `AbortedError`（name = "MessageAbortedError"），TUI 对
+ * MessageAbortedError 的 session.error **跳过不弹 toast**（tui/app.tsx:1022，
+ * 官方预留的静默错误类型）；message 仍是 PROBE_THROW_MESSAGE（retry 禁词规避
+ * 不变）。环境无 DOMException（非标准环境）时回退普通 Error。
+ */
+export function probeTerminationError(): Error {
+  if (typeof DOMException !== 'undefined') {
+    return new DOMException(PROBE_THROW_MESSAGE, 'AbortError');
+  }
+  return new Error(PROBE_THROW_MESSAGE);
+}
+
 /** `retry.ts` RETRYABLE_MESSAGE_PATTERNS 的关键词（小写比对）。 */
 export const RETRY_BANNED_TERMS = [
   '429',
