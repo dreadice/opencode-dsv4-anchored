@@ -45,10 +45,21 @@ export async function systemTransform(
   if (!gateModel(input.model, ctx.options.models)) return;
   if (input.sessionID === undefined) return;
 
-  // 标题生成请求（title agent 的 llm.stream，prompt.ts:224-249）：system[0] =
-  // title.txt（"You are a title generator..."）——不替换，否则标题指令丢失
-  // 导致乱标题（真机实测标题变成 "**tool_calls"）。
-  if (output.system[0]?.includes('You are a title generator')) return;
+  // 标题生成请求（title agent 的 llm.stream，prompt.ts:224-249）：system 里
+  // 含 title.txt 指令（"You are a title generator..." / "Generate a title" /
+  // "thread title"）——不替换，否则标题指令丢失导致乱标题（实测 `<tool_calls>`）。
+  const systemText = output.system.join('\n');
+  if (
+    systemText.includes('You are a title generator') ||
+    systemText.includes('Generate a title') ||
+    systemText.includes('thread title')
+  ) {
+    ctx.logger.info('system.transform.title-bypass', {
+      sessionID: input.sessionID,
+      head: systemText.slice(0, 120),
+    });
+    return;
+  }
 
   const session = await ctx.client.session.get({path: {id: input.sessionID}});
   const key = probeKey(session.directory, session.agent, input.model.modelID);

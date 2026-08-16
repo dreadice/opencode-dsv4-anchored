@@ -5,16 +5,21 @@
 
 ## ISSUE-001: `<｜DSML｜tool_calls>` 标题乱输出复现
 
-- **状态**：`open`
+- **状态**：`investigating`
 - **现象**：用户反馈 `<｜DSML｜tool_calls>` 标题乱输出又出现。
-- **已有防护**：`system-transform.ts:51` 对 `output.system[0]` 含
-  `You are a title generator` 的标题生成请求放行，不替换 minimal。
+- **已有防护**：`system-transform.ts` 对标题生成请求放行，不替换 minimal。
+- **serve 验证（0.1.3+）**：
+  - 会话无自定义 title，发送真实任务后，标题变为 `<tool_calls>`。
+  - 日志出现 `system.transform.title-bypass`，说明标题请求的 system **确实被
+    放行**（没有被替换成 minimal）。
+  - 因此标题乱输出不是“system 被替换”导致，而是**标题模型看到了轮 2 注入的
+    完整 system user part**（`[dsv4-anchored:injected]:...`），flash-free 小模型
+    据此输出了 `<tool_calls>`。
 - **待办**：
-  - 复现并抓 `serve.log` 中对应的 `system.transform` 与 `plugin.loaded`
-    版本日志，确认全局插件版本是否为 0.1.3。
-  - 确认标题请求的 `output.system[0]` 实际内容；若首行变化，需放宽/换更稳定
-    的识别条件（如包含 `title generator` / `thread title`）。
-  - 修复后补充回归用例。
+  - 确认是否需要保留 AI 自动标题；若不需要，可在 `sendRound2` 前用真实任务
+    文本设置一个简单标题，跳过 `ensureTitle`。
+  - 若需要保留 AI 标题，需让标题生成上下文排除 synthetic 注入块（opencode
+    目前 `ensureTitle` 会包含该 user 消息的全部 parts，插件侧较难干净过滤）。
 
 ## ISSUE-002: 轮 2 toast 时机误导 + verified 要等下一次用户消息
 
