@@ -18,7 +18,7 @@ import {
 
 const OPTIONS = {
   models: ['deepseek*v4*'],
-  whitelist: ['bash', 'str_replace_editor'],
+  whitelist: [],
   verifyN: 3,
   verifyTerms: DEFAULT_TERMS,
   probeTtlMs: 300000,
@@ -172,13 +172,14 @@ test('TC-2-6: seeded + 历史 assistant 消息 → 解锁', async () => {
   const s = client._sessions.get('ses_1')!;
   assert.equal(s.permission.at(-1)!.pattern, 'unsealed');
   assert.ok(
-    s.permission.some(
-      r => r.permission === 'str_replace_editor' && r.action === 'deny'
-    )
-  );
-  assert.ok(
     s.permission.some(r => r.permission === '*' && r.action === 'allow'),
     'agent ruleset 应覆盖'
+  );
+  assert.ok(
+    !s.permission.some(
+      r => r.permission === 'str_replace_editor' && r.action === 'deny'
+    ),
+    'round-10：假 str_replace_editor 已移除，解锁不再隐藏 deny'
   );
 });
 

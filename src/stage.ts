@@ -1,5 +1,4 @@
 export const STAGE_PERMISSION = '__dsv4_stage__';
-export const MINIMAL_WHITELIST = ['bash', 'str_replace_editor'];
 export const COMPACTION_TOOLS = [
   'read',
   'glob',
@@ -51,7 +50,8 @@ export function extractSessionDenies(ruleset: Rule[]): Rule[] {
   );
 }
 
-/** 解锁规则：agent ruleset → session denies → 隐藏 str_replace_editor → 哨兵 unsealed。 */
+/** 解锁规则：agent ruleset → session denies → 哨兵 unsealed（round-10：假
+ * str_replace_editor 工具已移除，无需隐藏 deny）。 */
 export function unlockRules(
   agentRuleset: Rule[],
   sessionDenies: Rule[]
@@ -59,17 +59,17 @@ export function unlockRules(
   return [
     ...agentRuleset,
     ...sessionDenies,
-    {permission: 'str_replace_editor', pattern: '*', action: 'deny'},
     {permission: STAGE_PERMISSION, pattern: 'unsealed', action: 'allow'},
   ];
 }
 
-/** compaction 回退规则（D5 修订：minimal 对 + compactionTools），哨兵回 seeded。 */
-export function compactionRules(): Rule[] {
+/** compaction 回退规则（D5 修订：配置白名单 + compactionTools，round-10：
+ * 参数化白名单——回退 = 回 seeded 态 + compaction 工具）。 */
+export function compactionRules(whitelist: string[]): Rule[] {
   return [
     {permission: STAGE_PERMISSION, pattern: 'seeded', action: 'allow'},
     {permission: '*', pattern: '*', action: 'deny'},
-    ...MINIMAL_WHITELIST.map(permission => ({
+    ...whitelist.map(permission => ({
       permission,
       pattern: '*',
       action: 'allow' as const,

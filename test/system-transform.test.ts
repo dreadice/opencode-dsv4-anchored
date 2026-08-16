@@ -11,7 +11,7 @@ import {createFakeClient, addSession} from './fake-client.ts';
 
 const OPTIONS = {
   models: ['deepseek*v4*'],
-  whitelist: ['bash', 'str_replace_editor'],
+  whitelist: [],
   verifyN: 3,
   verifyTerms: DEFAULT_TERMS,
   probeTtlMs: 300000,
@@ -110,7 +110,7 @@ test('TC-2-19b: 门控不命中 → 放行', async () => {
 test('compaction 回退：含哨兵会话 → 追加回退规则 + warn', async () => {
   const {ctx, client} = makeCtx();
   addSession(client, {id: 'ses_1', permission: [sentinel('unsealed')]});
-  await compacting(ctx, 'ses_1');
+  await compacting(ctx, 'ses_1', OPTIONS.whitelist);
   const s = client._sessions.get('ses_1')!;
   assert.ok(
     s.permission.some(
@@ -139,7 +139,7 @@ test('compaction 回退：含哨兵会话 → 追加回退规则 + warn', async 
 test('compaction 回退：pristine 会话不动作', async () => {
   const {ctx, client} = makeCtx();
   addSession(client, {id: 'ses_1'});
-  await compacting(ctx, 'ses_1');
+  await compacting(ctx, 'ses_1', OPTIONS.whitelist);
   const s = client._sessions.get('ses_1')!;
   assert.equal(s.permission.length, 0);
 });

@@ -2,9 +2,7 @@ import type {Plugin, PluginOptions} from '@opencode-ai/plugin';
 import {ensureState, type EnsureOptions} from '@/core';
 import {systemTransform} from '@/system-transform';
 import {compacting} from '@/compaction';
-import {strReplaceEditor} from '@/str-replace-editor';
 import {loadProbeStore, saveProbeStore} from '@/probe';
-import {DSH_BASH_DESCRIPTION} from '@/bash-description';
 import {makeLogger} from '@/logger';
 import {DEFAULT_TERMS, type VerifyTerms} from '@/verify';
 import type {FirstTurnFilter} from '@/inject';
@@ -37,7 +35,7 @@ function resolveOptions(options?: PluginOptions): EnsureOptions {
   const opts = (options ?? {}) as Dsv4Options;
   return {
     models: opts.models ?? ['deepseek*v4*'],
-    whitelist: opts.whitelist ?? ['bash', 'str_replace_editor'],
+    whitelist: opts.whitelist ?? [],
     verifyN: opts.verifyN ?? 3,
     verifyTerms: opts.verifyTerms ?? DEFAULT_TERMS,
     probeTtlMs: opts.probeTtlMs ?? 300_000,
@@ -59,9 +57,6 @@ export const Dsv4Anchored: Plugin = async ({client}, options) => {
   const logger = makeLogger(adaptLog(client));
 
   return {
-    tool: {
-      str_replace_editor: strReplaceEditor,
-    },
     'chat.message': async (input, output) => {
       if (!input.model) return;
       await ensureState(
@@ -93,15 +88,7 @@ export const Dsv4Anchored: Plugin = async ({client}, options) => {
       );
     },
     'experimental.session.compacting': async input => {
-      await compacting({client: sdk, logger}, input.sessionID);
-    },
-    'tool.definition': async (input, output) => {
-      // 假 bash（D10 对齐）：把 bash 描述换成 dsh persistent-bash 原文——
-      // 工具 schema 是锚定决定变量（issue #11），execute 仍是 opencode 原生。
-      // dsh 的 bash 描述全程不变（晋升后也是 persistent-bash），无需改回。
-      if (input.toolID === 'bash') {
-        output.description = DSH_BASH_DESCRIPTION;
-      }
+      await compacting({client: sdk, logger}, input.sessionID, eopts.whitelist);
     },
   };
 };
