@@ -1,5 +1,5 @@
 import {
-  PROBE_THROW_MESSAGE,
+  probeTerminationError,
   captureProbeSystem,
   probeKey,
   type ProbeStore,
@@ -39,11 +39,16 @@ export async function systemTransform(
       const system = output.system.join('\n');
       captureProbeSystem(ctx.probeStore, key, system);
       ctx.logger.info('probe.success', {key, sysLen: system.length});
-      throw new Error(PROBE_THROW_MESSAGE);
+      throw probeTerminationError();
     }
   }
   if (!gateModel(input.model, ctx.options.models)) return;
   if (input.sessionID === undefined) return;
+
+  // 标题生成请求（title agent 的 llm.stream，prompt.ts:224-249）：system[0] =
+  // title.txt（"You are a title generator..."）——不替换，否则标题指令丢失
+  // 导致乱标题（真机实测标题变成 "**tool_calls"）。
+  if (output.system[0]?.includes('You are a title generator')) return;
 
   const session = await ctx.client.session.get({path: {id: input.sessionID}});
   const key = probeKey(session.directory, session.agent, input.model.modelID);

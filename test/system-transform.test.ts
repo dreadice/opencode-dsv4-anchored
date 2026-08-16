@@ -159,3 +159,20 @@ test('system.transform 原地替换（splice）——同数组引用生效', asy
   );
   assert.equal(original[0], MINIMAL_PERSONA);
 });
+
+test('标题生成请求（title agent）→ 放行不替换（round-10：标题指令丢失会乱标题）', async () => {
+  const {ctx, client} = makeCtx();
+  addSession(client, {id: 'ses_1'});
+  const output = {
+    system: [
+      'You are a title generator. You output ONLY a thread title.',
+      'more system',
+    ],
+  };
+  await systemTransform(ctx, {sessionID: 'ses_1', model: MODEL}, output);
+  assert.equal(
+    output.system[0],
+    'You are a title generator. You output ONLY a thread title.',
+    '标题请求不应替换为 minimal'
+  );
+});
