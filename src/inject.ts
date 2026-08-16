@@ -1,7 +1,6 @@
 import {randomBytes} from 'node:crypto';
 
 export const INJECT_MARKER = '[dsv4-anchored:injected]';
-export const ANCHOR_MARKER = '[dsv4-anchored:anchor]';
 
 export type InjectionPart = {
   id: string;
@@ -33,13 +32,6 @@ export function hasInjectionMarker(
   parts: Array<{type: string; text?: unknown}>
 ): boolean {
   return hasMarker(parts, INJECT_MARKER);
-}
-
-/** 历史 parts 中是否已有锚定消息标记。 */
-export function hasAnchorMarker(
-  parts: Array<{type: string; text?: unknown}>
-): boolean {
-  return hasMarker(parts, ANCHOR_MARKER);
 }
 
 /** 注入 part：synthetic 标记 + 幂等标记文本 + 内容（system 或锚定消息）。 */

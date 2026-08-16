@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {verifyText, ZH_TERMS} from '@/verify';
+import {verifyText} from '@/verify';
 
 test('TC-1-17: We need 先出现 → 通过', () => {
   assert.equal(verifyText('We need to modify the build first.'), true);
@@ -28,14 +28,6 @@ test('TC-1-22: 仅 we 无 let → 通过（let 缺失 = +∞）', () => {
 
 test('TC-1-23: 无任何标记 → 不通过（giveup 语义）', () => {
   assert.equal(verifyText('先确认一下需求。'), false);
-});
-
-test('TC-1-24: 中文词表 we 系 → 通过', () => {
-  assert.equal(verifyText('我们需要先读取文件。', ZH_TERMS), true);
-});
-
-test('TC-1-25: 中文词表 let 系 → 不通过', () => {
-  assert.equal(verifyText('让我先看看目录。', ZH_TERMS), false);
 });
 
 test('TC-1-26: 大小写不敏感', () => {

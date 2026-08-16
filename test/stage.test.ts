@@ -124,5 +124,7 @@ test('TC-1-16: compactionRules 含白名单 + compactionTools + 哨兵 seeded', 
   );
   assert.equal(rules[0].pattern, 'seeded');
   const withBash = compactionRules(['bash']);
-  assert.ok(withBash.some(x => x.permission === 'bash' && x.action === 'allow'));
+  assert.ok(
+    withBash.some(x => x.permission === 'bash' && x.action === 'allow')
+  );
 });

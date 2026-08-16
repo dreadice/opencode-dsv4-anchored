@@ -20,7 +20,9 @@ export function createPendingStore(): PendingStore {
 }
 
 /** 从磁盘加载 pending（重启悬挂补发的数据来源）；无文件/损坏 → 空。 */
-export async function loadPendingStore(filePath: string): Promise<PendingStore> {
+export async function loadPendingStore(
+  filePath: string
+): Promise<PendingStore> {
   const store = createPendingStore();
   try {
     const raw = await readFile(filePath, 'utf8');

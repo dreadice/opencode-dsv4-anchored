@@ -12,12 +12,13 @@ import {
 import {verifyText, type VerifyTerms} from '@/verify';
 import {
   hasInjectionMarker,
-  hasMarker,
   buildInjectionPart,
   filterFirstTurnSystem,
-  ANCHOR_MARKER,
+  newPartId,
   type FirstTurnFilter,
 } from '@/inject';
+import {savePendingStore, type PendingStore} from '@/pending';
+import {sendRound2, type Round2Ctx} from '@/round2';
 import {lastCompactionBoundary} from '@/epoch';
 import type {Logger} from '@/logger';
 
@@ -27,6 +28,7 @@ export type CoreClient = {
       directory: string;
       agent: string;
       parentID?: string;
+      model?: {id: string; providerID: string};
       permission: Rule[];
     }>;
     update(opts: {
@@ -67,6 +69,8 @@ export type EnsureCtx = {
   probeStore: ProbeStore;
   probeSessions: Map<string, string>;
   giveupOnce: Set<string>;
+  pendingStore: PendingStore;
+  pendingFile: string;
 };
 
 export type EnsureInput = {
@@ -90,6 +94,31 @@ export type EnsureResult = {
 };
 
 export const MINIMAL_PERSONA = 'You are a helpful software engineer assistant.';
+
+/** 锚定 part：纯 dsh 原文（round-9 实测首轮任何额外内容都破坏 we 锚定，不拼
+ * 幂等标记）；synthetic → TUI 隐藏、模型可见。 */
+function anchorPart(
+  input: EnsureInput,
+  anchorText: string
+): EnsureInput['outputParts'][number] {
+  return {
+    id: newPartId(),
+    sessionID: input.sessionID,
+    messageID: input.messageID,
+    type: 'text',
+    text: anchorText,
+    synthetic: true,
+  };
+}
+
+/** output.parts 原地替换为锚定消息（同数组引用，splice）。 */
+function replaceWithAnchor(input: EnsureInput, anchorText: string): void {
+  input.outputParts.splice(
+    0,
+    input.outputParts.length,
+    anchorPart(input, anchorText)
+  );
+}
 
 /**
  * chat.message ensure 全流程（round-7/8 收敛：解锁/判别/注入都在此）：
@@ -127,31 +156,52 @@ export async function ensureState(
   const boundary = lastCompactionBoundary(history);
   const allParts = history.flatMap(m => m.parts);
   const stage = getStage(session.permission);
+  const post = boundary === -1 ? history : history.slice(boundary + 1);
+  const anchorDone = post.some(m => m.info.role === 'assistant');
 
   let injected = false;
-  if (
-    options.anchorText !== undefined &&
-    (stage === 'pristine' || stage === 'seeded') &&
-    !hasMarker(allParts, ANCHOR_MARKER)
-  ) {
-    // zero-anchored 锚定轮：prepend 固定锚定消息，真实任务不参与首轮。
-    input.outputParts.unshift(
-      buildInjectionPart(
-        options.anchorText,
-        input.sessionID,
-        input.messageID,
-        ANCHOR_MARKER
-      )
-    );
-    injected = true;
+  let anchored = false;
+  // zero-anchored 锚定轮（D13 §4.5）：真实消息推迟 pending，首轮只有锚定消息。
+  // 状态推导 = pending 存在性 + 边界后 assistant 消息（锚定回复），不用标记。
+  const anchorText = options.anchorText;
+  const anchorMode =
+    Boolean(anchorText) && (stage === 'pristine' || stage === 'seeded');
+  if (anchorMode && anchorText) {
+    const pending = ctx.pendingStore.map.get(input.sessionID);
+    if (pending) {
+      if (anchorDone) {
+        // 悬挂补发（重启/轮 2 失败后）：pending 已存 + 锚定回复已落库 →
+        // 补发轮 2（sendRound2 发前清 pending 防重）；当前消息正常放行
+        // （不推迟——避免当前消息变空 placeholder + 空 user run）。
+        void sendRound2(ctx as Round2Ctx, input.sessionID);
+      } else {
+        // 锚定轮进行中/中断重试：当前消息继续推迟
+        pending.parts.push(...input.outputParts);
+        void savePendingStore(ctx.pendingStore, ctx.pendingFile);
+        replaceWithAnchor(input, anchorText);
+        anchored = true;
+      }
+    } else if (!anchorDone) {
+      // 首轮锚定：真实 parts 存盘 pending，parts 替换为锚定消息
+      ctx.pendingStore.map.set(input.sessionID, {
+        parts: input.outputParts.map(p => ({...p})),
+        messageID: input.messageID,
+        ts: Date.now(),
+      });
+      void savePendingStore(ctx.pendingStore, ctx.pendingFile);
+      replaceWithAnchor(input, anchorText);
+      anchored = true;
+    }
+    // pending 无 + 锚定已落库（旧会话/轮 2 已发出）→ 正常放行
   } else if (
     stage === 'unsealed' &&
     options.injectSystem !== false &&
     !hasInjectionMarker(allParts) &&
     probe.system
   ) {
-    // 晋升信号后（dsh 思路）：注入原始 system——去 opencode persona（default.txt
-    // 段），保留行为要求/env/AGENTS/技能/MCP；工具已由 unlock 恢复全量。
+    // 注入 user system（D13 轮 2 由 sendRound2 携带；此路径为后续消息/resume
+    // 兜底）：去 opencode persona（default.txt 段），保留行为要求/env/AGENTS/
+    // 技能/MCP；工具已由 unlock 恢复全量。
     const system = options.firstTurnFilter
       ? filterFirstTurnSystem(probe.system, options.firstTurnFilter)
       : probe.system;
@@ -164,7 +214,7 @@ export async function ensureState(
     sessionID: input.sessionID,
     stage,
     gating: 'hit',
-    injectSource: injected ? 'probe' : 'none',
+    injectSource: anchored ? 'anchor' : injected ? 'probe' : 'none',
     subagent: session.parentID !== undefined,
   });
 
@@ -177,7 +227,6 @@ export async function ensureState(
   }
 
   if (stage === 'seeded' || stage === 'unsealed') {
-    const post = boundary === -1 ? history : history.slice(boundary + 1);
     const hasSignal = post.some(
       m => m.info.role === 'assistant' || m.parts.some(p => p.type === 'tool')
     );

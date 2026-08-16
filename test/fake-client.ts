@@ -6,7 +6,8 @@ export type FakeSession = {
   directory: string;
   parentID?: string;
   agent: string;
-  model: {providerID: string; modelID: string};
+  /** wire Session 形（round-10：sendRound2 用 session.model.id）。 */
+  model: {id: string; providerID: string; variant?: string};
   permission: Rule[];
   title?: string;
 };
@@ -49,9 +50,9 @@ export type FakeClient = {
   _logs: FakeLog[];
   _sessions: Map<string, FakeSession>;
   _messages: Map<string, FakeMessage[]>;
-  _probeCalls: Array<{id: string; body: unknown}>;
-  _probeHandler: ((id: string, body: unknown) => Promise<never>) | undefined;
-  setProbeHandler(h: (id: string, body: unknown) => Promise<never>): void;
+  _promptCalls: Array<{id: string; body: unknown}>;
+  _promptHandler: ((id: string, body: unknown) => Promise<unknown>) | undefined;
+  setPromptHandler(h: (id: string, body: unknown) => Promise<unknown>): void;
 };
 
 export const BUILD_AGENT: FakeAgent = {
@@ -76,17 +77,17 @@ export const EXPLORE_AGENT: FakeAgent = {
 };
 
 export function createFakeClient(opts?: {
-  model?: {providerID: string; modelID: string};
+  model?: {id: string; providerID: string};
 }): FakeClient {
   const model = opts?.model ?? {
+    id: 'deepseek-v4-flash-free',
     providerID: 'opencode',
-    modelID: 'deepseek-v4-flash-free',
   };
   const sessions = new Map<string, FakeSession>();
   const messages = new Map<string, FakeMessage[]>();
   const logs: FakeLog[] = [];
-  const probeCalls: Array<{id: string; body: unknown}> = [];
-  let probeHandler: FakeClient['_probeHandler'];
+  const promptCalls: Array<{id: string; body: unknown}> = [];
+  let promptHandler: FakeClient['_promptHandler'];
 
   const session = (id: string): FakeSession => {
     const s = sessions.get(id);
@@ -128,8 +129,8 @@ export function createFakeClient(opts?: {
         return {id};
       },
       async prompt({path, body}) {
-        probeCalls.push({id: path.id, body});
-        if (probeHandler) return probeHandler(path.id, body);
+        promptCalls.push({id: path.id, body});
+        if (promptHandler) return promptHandler(path.id, body);
         throw new Error(PROBE_THROW_MESSAGE);
       },
       async delete({path}) {
@@ -152,10 +153,10 @@ export function createFakeClient(opts?: {
     _logs: logs,
     _sessions: sessions,
     _messages: messages,
-    _probeCalls: probeCalls,
-    _probeHandler: undefined,
-    setProbeHandler(h) {
-      probeHandler = h;
+    _promptCalls: promptCalls,
+    _promptHandler: undefined,
+    setPromptHandler(h) {
+      promptHandler = h;
     },
   };
 }
@@ -170,8 +171,8 @@ export function addSession(
     directory: opts.directory ?? '/proj',
     agent: opts.agent ?? 'build',
     model: opts.model ?? {
+      id: 'deepseek-v4-flash-free',
       providerID: 'opencode',
-      modelID: 'deepseek-v4-flash-free',
     },
     permission: opts.permission ?? [],
     parentID: opts.parentID,

@@ -54,8 +54,3 @@ export function verifyText(
   if (letIdx === -1) return true;
   return weIdx < letIdx;
 }
-
-export const ZH_TERMS: VerifyTerms = {
-  we: ['我们'],
-  let: ['让我', '我来', '我先'],
-};

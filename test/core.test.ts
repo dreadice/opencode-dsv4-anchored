@@ -5,7 +5,8 @@ import {createProbeStore, captureProbeSystem, probeKey} from '@/probe';
 import {makeLogger} from '@/logger';
 import {STAGE_PERMISSION, type Rule} from '@/stage';
 import {DEFAULT_TERMS} from '@/verify';
-import {INJECT_MARKER, ANCHOR_MARKER} from '@/inject';
+import {INJECT_MARKER} from '@/inject';
+import {createPendingStore} from '@/pending';
 import {
   createFakeClient,
   addSession,
@@ -33,11 +34,13 @@ function makeCtx(): {
   const client = createFakeClient();
   const ctx: EnsureCtx = {
     client: client as unknown as EnsureCtx['client'],
-    options: OPTIONS,
+    options: {...OPTIONS},
     logger: makeLogger(client.app.log.bind(client.app), {debugEnabled: false}),
     probeStore: createProbeStore(),
     probeSessions: new Map(),
     giveupOnce: new Set(),
+    pendingStore: createPendingStore(),
+    pendingFile: '/tmp/dsv4-pending-test.json',
   };
   return {ctx, client};
 }
@@ -94,15 +97,15 @@ test('TC-2-1: pristine 首轮 → seeded（首轮不注入，解锁后才注入�
 test('TC-2-2: 探针成功（缓存写入 + 会话清理）', async () => {
   const {ctx, client} = makeCtx();
   addSession(client, {id: 'ses_1'});
-  client.setProbeHandler(async () => {
+  client.setPromptHandler(async () => {
     const key = probeKey('/proj', 'build', MODEL.modelID);
     captureProbeSystem(ctx.probeStore, key, 'CAPTURED-SYSTEM');
     throw new Error('DSV4 probe: capture complete');
   });
   const res = await ensureState(ctx, input('ses_1'));
   assert.equal(res.action, 'seeded');
-  assert.ok(client._probeCalls.length === 1);
-  const call = client._probeCalls[0]!;
+  assert.ok(client._promptCalls.length === 1);
+  const call = client._promptCalls[0]!;
   assert.ok(!('tools' in (call.body as object)), '探针请求不得带 tools');
   assert.equal((call.body as {agent: string}).agent, 'build');
   const key = probeKey('/proj', 'build', MODEL.modelID);
@@ -113,7 +116,7 @@ test('TC-2-2: 探针成功（缓存写入 + 会话清理）', async () => {
 test('TC-2-3: 探针失败 → 旁路（不注入不 seeded）', async () => {
   const {ctx, client} = makeCtx();
   addSession(client, {id: 'ses_1'});
-  client.setProbeHandler(async () => {
+  client.setPromptHandler(async () => {
     throw new Error('network unreachable');
   });
   const res = await ensureState(ctx, input('ses_1'));
@@ -132,7 +135,7 @@ test('TC-2-4: 探针并发去重（两次调用只 create 一次）', async () =
     creates++;
     return orig(opts);
   };
-  client.setProbeHandler(async () => {
+  client.setPromptHandler(async () => {
     captureProbeSystem(
       ctx.probeStore,
       probeKey('/proj', 'build', MODEL.modelID),
@@ -364,17 +367,137 @@ test('injectSystem:false 时首轮不注入', async () => {
   assert.equal(parts.length, 1, '关闭注入时首轮不应 prepend 注入 part');
 });
 
-test('anchorText：首轮 prepend 固定锚定消息（优先于 system 注入）', async () => {
+test('TC-2-25: 锚定轮——首轮 parts 替换为纯锚定消息，真实 parts 进 pending', async () => {
   const {ctx, client} = makeCtx();
   seedProbe(ctx);
   ctx.options.anchorText =
     'This round is a test. Tools are not open yet; all tools will open next round.';
   addSession(client, {id: 'ses_anchor'});
   const parts: unknown[] = [{type: 'text', text: 'real task'}];
-  await ensureState(ctx, input('ses_anchor', parts));
-  assert.equal(parts.length, 2, '应 prepend 锚定消息');
-  const first = parts[0] as {text: string};
-  assert.ok(first.text.includes('This round is a test'), '锚定消息在最前');
-  assert.ok(!first.text.includes('SYSTEM-FULL'), '不注入 system');
-  assert.ok(first.text.includes(ANCHOR_MARKER), '锚定 part 带 ANCHOR 标记');
+  const res = await ensureState(ctx, input('ses_anchor', parts));
+  assert.equal(res.action, 'seeded');
+  assert.equal(parts.length, 1, 'parts 应替换为锚定消息（真实消息推迟）');
+  const anchor = parts[0] as {text: string; synthetic: boolean};
+  assert.equal(
+    anchor.text,
+    'This round is a test. Tools are not open yet; all tools will open next round.',
+    '锚定 part = 纯 dsh 原文（不加幂等标记）'
+  );
+  assert.equal(anchor.synthetic, true);
+  assert.ok(!anchor.text.includes('SYSTEM-FULL'), '不注入 system');
+  const pending = ctx.pendingStore.map.get('ses_anchor')!;
+  assert.ok(pending, '真实 parts 应存盘 pending');
+  assert.equal(pending.parts.length, 1);
+  assert.equal(
+    (pending.parts[0] as {text: string}).text,
+    'real task',
+    'pending 保存真实消息内容'
+  );
+});
+
+test('TC-2-26: 锚定轮 bypass——不替换 parts、不存 pending（原生）', async () => {
+  const {ctx, client} = makeCtx();
+  addSession(client, {id: 'ses_bypass'});
+  ctx.options.anchorText = 'ANCHOR';
+  const key = probeKey('/proj', 'build', MODEL.modelID);
+  ctx.probeStore.map.set(key, {
+    status: 'failed',
+    error: 'boom',
+    ts: Date.now(),
+  });
+  const parts: unknown[] = [{type: 'text', text: 'real task'}];
+  const res = await ensureState(ctx, input('ses_bypass', parts));
+  assert.equal(res.action, 'bypass');
+  assert.equal(parts.length, 1);
+  assert.equal((parts[0] as {text: string}).text, 'real task', '原样放行');
+  assert.equal(ctx.pendingStore.map.has('ses_bypass'), false);
+});
+
+test('TC-2-27: 重锚定——pending 存在 + 无 assistant 回复 → 追加推迟 + 替换锚定', async () => {
+  const {ctx, client} = makeCtx();
+  seedProbe(ctx);
+  ctx.options.anchorText = 'ANCHOR';
+  addSession(client, {id: 'ses_retry', permission: [sentinel('seeded')]});
+  ctx.pendingStore.map.set('ses_retry', {
+    parts: [{type: 'text', text: 'first'}],
+    messageID: 'msg_1',
+    ts: Date.now(),
+  });
+  const parts: unknown[] = [{type: 'text', text: 'second'}];
+  const res = await ensureState(ctx, input('ses_retry', parts));
+  assert.equal(res.action, 'pending', '无信号不解锁');
+  assert.equal(parts.length, 1);
+  assert.equal((parts[0] as {text: string}).text, 'ANCHOR');
+  const pending = ctx.pendingStore.map.get('ses_retry')!;
+  assert.equal(pending.parts.length, 2, '当前消息应追加到 pending');
+  assert.equal((pending.parts[1] as {text: string}).text, 'second');
+});
+
+test('TC-2-30: ensure 悬挂补发——pending 存在 + 锚定回复已落库 → 补发轮 2，当前消息正常放行', async () => {
+  const {ctx, client} = makeCtx();
+  seedProbe(ctx);
+  ctx.options.anchorText = 'ANCHOR';
+  addSession(client, {id: 'ses_dangling', permission: [sentinel('seeded')]});
+  ctx.pendingStore.map.set('ses_dangling', {
+    parts: [{type: 'text', text: 'first'}],
+    messageID: 'msg_1',
+    ts: Date.now(),
+  });
+  // 锚定回复已落库（晋升信号）
+  client._messages.set('ses_dangling', [
+    assistant('msg_a', [reasoning('We need to.')]),
+  ]);
+  client.setPromptHandler(async () => ({}));
+  const parts: unknown[] = [{type: 'text', text: 'second'}];
+  await ensureState(ctx, input('ses_dangling', parts));
+  await new Promise(r => setImmediate(r));
+  assert.equal(parts.length, 1, '当前消息正常放行（不推迟不替换）');
+  assert.equal((parts[0] as {text: string}).text, 'second');
+  assert.ok(client._promptCalls.length === 1, '补发一次轮 2');
+  const body = client._promptCalls[0]!.body as {
+    parts: Array<Record<string, unknown>>;
+    agent: string;
+    model?: {providerID: string; modelID: string};
+  };
+  assert.ok(!('tools' in body), '轮 2 不带 tools（不替换 permission）');
+  assert.equal(body.agent, 'build');
+  assert.deepEqual(body.model, {
+    providerID: 'opencode',
+    modelID: MODEL.modelID,
+  });
+  const texts = body.parts.map(p => String(p.text ?? ''));
+  assert.ok(
+    texts[0]!.includes(INJECT_MARKER),
+    'user system part 在前（带幂等标记）'
+  );
+  assert.ok(texts[0]!.includes('SYSTEM-FULL'), '注入探针捕获 system');
+  assert.ok(texts[1]!.includes('first'), 'pending 真实消息在后');
+  assert.equal(
+    ctx.pendingStore.map.has('ses_dangling'),
+    false,
+    '发送前清 pending'
+  );
+});
+
+test('TC-2-31: ensure 悬挂补发防重——sending 中的会话不重复发', async () => {
+  const {ctx, client} = makeCtx();
+  seedProbe(ctx);
+  ctx.options.anchorText = 'ANCHOR';
+  addSession(client, {id: 'ses_d', permission: [sentinel('seeded')]});
+  ctx.pendingStore.map.set('ses_d', {
+    parts: [{type: 'text', text: 'first'}],
+    messageID: 'msg_1',
+    ts: Date.now(),
+  });
+  client._messages.set('ses_d', [assistant('msg_a', [reasoning('ok.')])]);
+  ctx.pendingStore.sending.add('ses_d');
+  client.setPromptHandler(async () => ({}));
+  const parts: unknown[] = [{type: 'text', text: 'second'}];
+  await ensureState(ctx, input('ses_d', parts));
+  await new Promise(r => setImmediate(r));
+  assert.equal(client._promptCalls.length, 0, 'sending 中不重复发');
+  assert.ok(
+    ctx.pendingStore.map.has('ses_d'),
+    'pending 保留（等待首次发送完成）'
+  );
 });
