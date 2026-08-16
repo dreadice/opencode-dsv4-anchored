@@ -366,3 +366,18 @@ test('injectSystem:false 时首轮不注入', async () => {
   assert.equal(res.action, 'seeded');
   assert.equal(parts.length, 1, '关闭注入时首轮不应 prepend 注入 part');
 });
+
+test('anchorText：首轮 prepend 固定锚定消息（优先于 system 注入）', async () => {
+  const {ctx, client} = makeCtx();
+  seedProbe(ctx);
+  ctx.options.anchorText =
+    'This round is a test. Tools are not open yet; all tools will open next round.';
+  addSession(client, {id: 'ses_anchor'});
+  const parts: unknown[] = [{type: 'text', text: 'real task'}];
+  await ensureState(ctx, input('ses_anchor', parts));
+  assert.equal(parts.length, 2, '应 prepend 锚定消息');
+  const first = parts[0] as {text: string};
+  assert.ok(first.text.includes('This round is a test'), '锚定消息在最前');
+  assert.ok(!first.text.includes('SYSTEM-FULL'), '不注入 system');
+  assert.ok(first.text.includes(INJECT_MARKER), '锚定 part 带幂等标记');
+});

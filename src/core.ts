@@ -53,6 +53,9 @@ export type EnsureOptions = {
   firstTurnFilter?: FirstTurnFilter;
   /** 关闭首轮 user 注入（零注入形态：首轮纯 minimal + 真实消息）。 */
   injectSystem?: boolean;
+  /** 零工具锚定轮（zero-anchored）：首轮 prepend 固定锚定消息，不注入 system；
+   * 优先于 injectSystem。 */
+  anchorText?: string;
 };
 
 export type EnsureCtx = {
@@ -124,18 +127,23 @@ export async function ensureState(
   const stage = getStage(session.permission);
 
   let injected = false;
-  if (
-    options.injectSystem !== false &&
-    !hasInjectionMarker(allParts) &&
-    probe.system
-  ) {
-    const system = options.firstTurnFilter
-      ? filterFirstTurnSystem(probe.system, options.firstTurnFilter)
-      : probe.system;
-    input.outputParts.unshift(
-      buildInjectionPart(system, input.sessionID, input.messageID)
-    );
-    injected = true;
+  if (!hasInjectionMarker(allParts)) {
+    if (options.anchorText !== undefined) {
+      // 零工具锚定轮（zero-anchored）：prepend 固定锚定消息，真实任务不参与
+      // 首轮（复杂任务描述会污染 thinking 轨迹，dsh zero-anchored-standard）。
+      input.outputParts.unshift(
+        buildInjectionPart(options.anchorText, input.sessionID, input.messageID)
+      );
+      injected = true;
+    } else if (options.injectSystem !== false && probe.system) {
+      const system = options.firstTurnFilter
+        ? filterFirstTurnSystem(probe.system, options.firstTurnFilter)
+        : probe.system;
+      input.outputParts.unshift(
+        buildInjectionPart(system, input.sessionID, input.messageID)
+      );
+      injected = true;
+    }
   }
   logger.info('chat.message', {
     sessionID: input.sessionID,

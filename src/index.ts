@@ -24,6 +24,7 @@ type Dsv4Options = {
   probeTtlMs?: number;
   cacheDir?: string;
   injectSystem?: boolean;
+  anchorText?: string;
   firstTurnFilter?: FirstTurnFilter;
 };
 
@@ -37,6 +38,7 @@ function resolveOptions(options?: PluginOptions): EnsureOptions {
     probeTtlMs: opts.probeTtlMs ?? 300_000,
     firstTurnFilter: opts.firstTurnFilter,
     injectSystem: opts.injectSystem,
+    anchorText: opts.anchorText,
   };
 }
 
