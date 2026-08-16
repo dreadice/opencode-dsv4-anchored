@@ -55,7 +55,9 @@ export async function systemTransform(
     return;
 
   const beforeLen = output.system.join('\n').length;
-  output.system = [MINIMAL_PERSONA];
+  // 原地替换数组内容：plugin.trigger 忽略返回值，request.ts 用局部 system
+  // 数组（同引用）——重新赋值 output.system 不会生效，必须 splice 原地改。
+  output.system.splice(0, output.system.length, MINIMAL_PERSONA);
   ctx.logger.info('system.transform', {
     sessionID: input.sessionID,
     action: 'replace',

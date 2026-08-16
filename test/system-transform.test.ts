@@ -143,3 +143,19 @@ test('compaction 回退：pristine 会话不动作', async () => {
   const s = client._sessions.get('ses_1')!;
   assert.equal(s.permission.length, 0);
 });
+
+test('system.transform 原地替换（splice）——同数组引用生效', async () => {
+  const {ctx, client} = makeCtx();
+  addSession(client, {id: 'ses_1'});
+  const original = ['long original system content'];
+  const output = {system: original};
+  await systemTransform(ctx, {sessionID: 'ses_1', model: MODEL}, output);
+  assert.equal(output.system.length, 1);
+  assert.equal(output.system[0], MINIMAL_PERSONA);
+  assert.equal(
+    original.length,
+    1,
+    '原数组引用应被原地修改（trigger 忽略返回值）'
+  );
+  assert.equal(original[0], MINIMAL_PERSONA);
+});
