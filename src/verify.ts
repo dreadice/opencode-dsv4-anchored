@@ -12,9 +12,16 @@ function escapeRe(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+function isAscii(term: string): boolean {
+  for (const ch of term) {
+    if (ch.charCodeAt(0) > 127) return false;
+  }
+  return true;
+}
+
 function earliestMatch(text: string, term: string): number {
   const escaped = escapeRe(term);
-  if (/[^\x00-\x7F]/.test(term)) {
+  if (!isAscii(term)) {
     return text.indexOf(term);
   }
   const re = new RegExp(`(?<![a-z])${escaped}(?![a-z'])`);
