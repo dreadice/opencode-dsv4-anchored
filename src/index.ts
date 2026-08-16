@@ -23,6 +23,7 @@ type Dsv4Options = {
   verifyTerms?: VerifyTerms;
   probeTtlMs?: number;
   cacheDir?: string;
+  injectSystem?: boolean;
   firstTurnFilter?: FirstTurnFilter;
 };
 
@@ -35,6 +36,7 @@ function resolveOptions(options?: PluginOptions): EnsureOptions {
     verifyTerms: opts.verifyTerms ?? DEFAULT_TERMS,
     probeTtlMs: opts.probeTtlMs ?? 300_000,
     firstTurnFilter: opts.firstTurnFilter,
+    injectSystem: opts.injectSystem,
   };
 }
 

@@ -51,6 +51,8 @@ export type EnsureOptions = {
   probeTtlMs: number;
   /** 首轮注入选择性剥离（D11 备选；默认全量注入）。 */
   firstTurnFilter?: FirstTurnFilter;
+  /** 关闭首轮 user 注入（零注入形态：首轮纯 minimal + 真实消息）。 */
+  injectSystem?: boolean;
 };
 
 export type EnsureCtx = {
@@ -122,7 +124,11 @@ export async function ensureState(
   const stage = getStage(session.permission);
 
   let injected = false;
-  if (!hasInjectionMarker(allParts) && probe.system) {
+  if (
+    options.injectSystem !== false &&
+    !hasInjectionMarker(allParts) &&
+    probe.system
+  ) {
     const system = options.firstTurnFilter
       ? filterFirstTurnSystem(probe.system, options.firstTurnFilter)
       : probe.system;

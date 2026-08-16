@@ -355,3 +355,14 @@ test('tool part 也算解锁信号', async () => {
   const res = await ensureState(ctx, input('ses_1'));
   assert.equal(res.action, 'unlock');
 });
+
+test('injectSystem:false 时首轮不注入', async () => {
+  const {ctx, client} = makeCtx();
+  seedProbe(ctx);
+  ctx.options.injectSystem = false;
+  addSession(client, {id: 'ses_noinj'});
+  const parts: unknown[] = [{type: 'text', text: 'hello'}];
+  const res = await ensureState(ctx, input('ses_noinj', parts));
+  assert.equal(res.action, 'seeded');
+  assert.equal(parts.length, 1, '关闭注入时首轮不应 prepend 注入 part');
+});
