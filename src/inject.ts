@@ -73,9 +73,13 @@ export type FirstTurnFilter = {
 const SEGMENT_PATTERN =
   /\n(?=Instructions from: |Skills provide specialized instructions|You are opencode,)/;
 
-/** 删除开篇身份声明句（"You are opencode, ..." 到首个换行），保留段内行为要求。 */
+/** 删除开篇身份声明句（default.txt 第一句到句号），保留同行后续
+ * "Use the instructions below ..." 及段内行为要求。 */
 function stripIdentity(text: string): string {
-  return text.replace(/^You are opencode,[^\n]*\n+/, '');
+  return text.replace(
+    /^You are opencode, an interactive CLI tool that helps users with software engineering tasks\. ?/,
+    ''
+  );
 }
 
 /** 首轮注入前的选择性剥离（D11 备选）：按稳定标记切段，滤掉指定段。 */
