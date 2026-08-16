@@ -38,6 +38,8 @@ flash-free）、round-9 zero-anchored 时序定案（已落档，**代码未实�
 - `docs/decisions.md` — 决策记录（D1-D12）。**决定清单**（顶部含 round-7 术语表）
 - `docs/testing.md` — **测试用例文档**（L1 单元 / L2 fake client 集成 / L3
   `opencode run` 真机；TC-1-x ~ TC-3-x 用例清单）
+- `docs/cli-testing.md` — **CLI 真机测试手册**（构建部署/配置/命令模板/日志
+  核对/实测结论/花钱注意）
 - `docs/plan.md` — **执行计划**（P0~P5 分阶段；TDD 红须编译通过；每模块含
   函数签名/实现细节/验收）
 - 参考仓库（勿提交）：
