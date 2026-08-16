@@ -159,7 +159,7 @@ P0 基础设施 ─▶ P1 L1 纯函数+TDD ─▶ P2 L2 fake client 集成 ─�
   含 INJECT_MARKER
 - `buildInjectionPart(system, sessionID, messageID): Part`：
   `{ id: newPartId(), sessionID, messageID, type:"text",
-  text: \`${INJECT_MARKER}\n${system}\`, synthetic: true }`
+text: \`${INJECT_MARKER}\n${system}\`, synthetic: true }`
 - `newPartId(): string`：`"prt_" + Date.now().toString(16) + 随机 hex`（参考
   `id/id.ts` 的 `prt_<hex>` 格式，保证唯一）
 - 测试：1-28 含标记→true、1-29 无→false、1-30 part 字段断言（type/synthetic/
