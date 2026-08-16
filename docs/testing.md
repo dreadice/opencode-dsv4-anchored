@@ -189,30 +189,35 @@ const messages = [
 | TC-2-23 | str_replace_editor insert      | 行插入                                                  | 成功                                                                                              |
 | TC-2-24 | 日志分级                       | debug 关                                                | `debug()` 短路，无序列化/HTTP                                                                     |
 
-## 5. L3 真机集成测试（opencode run + deepseek-v4-pro）
+## 5. L3 真机集成测试（opencode run + opencode/deepseek-v4-flash-free）
+
+> **2026-08-16 实测**：全部用 flash-free（不用 pro）。模型 thinking 为
+> standard-like（"The user wants…/Let me explore"），判别走 giveup——符合
+> plan 预期（free 小模型不产出 we 风格），插件不锁死。v4-pro 验证留待用户
+> 提供 key 后补跑。
 
 ### 5.1 前置
 
-- 插件装到 opencode（plugin 目录加载，opencode >= 1.18.18）
-- API key：`DEEPSEEK_API_KEY` 环境变量（deepseek 官方端点）或 opencode.json
-  provider 配置；模型 `deepseek/deepseek-v4-pro`
-- 测试目录：临时项目（含少量文件/AGENTS.md 可观察注入）
+- 安装：`dist/index.js` 复制到项目 `.opencode/plugins/dsv4-anchored.js`
+  （opencode 自动发现；配置字段是 `plugin` 单数，非 `plugins`）
+- 模型 `opencode/deepseek-v4-flash-free`（opencode 自带，无需注册）
+- 测试目录：临时项目（含少量文件）
 - 日志：`OPENCODE_LOG_LEVEL=DEBUG`，`--print-logs` 打 stderr
 
 ### 5.2 用例
 
-| 用例    | 名称             | 命令/步骤                                                                                                                               | 期望                                                                                                                    |
-| ------- | ---------------- | --------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
-| TC-3-1  | 首轮锚定目录     | `opencode run --model opencode/deepseek-v4-flash-free --variant max --print-logs "Understand this project and summarize what it does."` | 日志 `chat.message`：stage=seeded、injectSource=probe、visibleTools=[bash,str_replace_editor]；首条 user 消息含幂等标记 |
-| TC-3-2  | 判别达成         | 同上 `--thinking`                                                                                                                       | 首轮 reasoning 块按 verifyText 判据核对（we 先于 let）；插件日志 verify.passed（或 giveup 如实记录）                    |
-| TC-3-3  | 解锁             | 同一会话第二轮                                                                                                                          | 日志 `unlock`；后续请求可见完整 agent ruleset 工具                                                                      |
-| TC-3-4  | 状态文件         | cat probe-cache.json                                                                                                                    | 含 `{key, status:"ok"/"failed", ts}`                                                                                    |
-| TC-3-5  | 真实任务         | `--auto "Create a file in this project and read it."`                                                                                   | bash/str_replace_editor 首轮可用；解锁后编辑工具可用                                                                    |
-| TC-3-6  | resume           | `-s <sessionID>` 继续（英文 prompt）                                                                                                    | 状态从 ruleset 恢复；已 verified 不重复注入/判别                                                                        |
-| TC-3-7  | compaction       | 长对话触发压缩                                                                                                                          | `compaction.rollback` warn；回 seeded；重注入；重新判别                                                                 |
-| TC-3-8  | 探针失败旁路     | 模拟（如临时断 key/超时）                                                                                                               | `bypass` warn；system 原生、工具全量                                                                                    |
-| TC-3-9  | 门控对照         | `--model <非v4模型>`                                                                                                                    | 无 dsv4-anchored 处理日志（原生）                                                                                       |
-| TC-3-10 | 中文判别（实验） | 中文 prompt + 中文词表                                                                                                                  | 通过则 verified；标记缺失则 giveup（warn）不锁死                                                                        |
+| 用例    | 名称             | 命令/步骤                                                                                                                               | 期望                                                                                                                    | 实测 |
+| ------- | ---------------- | --------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- | ---- |
+| TC-3-1  | 首轮锚定目录     | `opencode run --model opencode/deepseek-v4-flash-free --variant max --print-logs "Understand this project and summarize what it does."` | 日志 `chat.message`：stage=seeded、injectSource=probe、visibleTools=[bash,str_replace_editor]；首条 user 消息含幂等标记 | ✅ stage=seeded、injectSource=probe、注入幂等标记 |
+| TC-3-2  | 判别达成         | 同上 `--thinking`                                                                                                                       | 首轮 reasoning 块按 verifyText 判据核对（we 先于 let）；插件日志 verify.passed（或 giveup 如实记录）                    | ✅ 判别 giveup（standard-like thinking；warn 一次不锁死，符合预期） |
+| TC-3-3  | 解锁             | 同一会话第二轮（`-c` 继续）                                                                                                             | 日志 `unlock`；后续请求可见完整 agent ruleset 工具                                                                      | ✅ `unlock` 日志 + bash 权限恢复 |
+| TC-3-4  | 状态文件         | cat probe-cache.json                                                                                                                    | 含 `{key, status:"ok"/"failed", ts}`                                                                                    | ✅ 落盘含完整 system（按天清理防堆积） |
+| TC-3-5  | 真实任务         | `--auto "Create a file in this project and read it."`                                                                                   | bash/str_replace_editor 首轮可用；解锁后编辑工具可用                                                                    | ✅ 首轮 str_replace_editor create+view 成功 |
+| TC-3-6  | resume           | `-c` 继续（英文 prompt）                                                                                                                | 状态从 ruleset 恢复；已 verified 不重复注入/判别                                                                        | ✅ `-c` 恢复 seeded→unsealed，不重复注入 |
+| TC-3-7  | compaction       | 长对话触发压缩                                                                                                                          | `compaction.rollback` warn；回 seeded；重注入；重新判别                                                                 | ⏳ 待验证（flash-free 128K 长对话才触发） |
+| TC-3-8  | 探针失败旁路     | 模拟（如临时断 key/超时）                                                                                                               | `bypass` warn；system 原生、工具全量                                                                                    | ⏳ 待验证（需模拟网络失败） |
+| TC-3-9  | 门控对照         | `--model opencode/hy3-free`                                                                                                             | 无 dsv4-anchored 处理日志（原生）                                                                                       | ✅ 零插件日志（原生） |
+| TC-3-10 | 中文判别（实验） | 中文 prompt + 中文词表                                                                                                                  | 通过则 verified；标记缺失则 giveup（warn）不锁死                                                                        | ⏳ 可选 |
 
 ### 5.3 判定口径（L3 成功标准）
 

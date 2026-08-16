@@ -239,10 +239,16 @@ logError`（`handlers/control.ts:28-39`）；级别仅 debug/info/warn/error，
 
 ### 8.1 安装
 
-- 插件目录作为 opencode 插件加载（package.json exports `./server` →
-  dist/index.js；engines.opencode `>=1.18.18`）。
-- opencode.json（用户侧）`plugins` 指向本插件；安装即生效（D1），无需
-  agent 配置。
+- 构建：`npm run build` 产出自包含 `dist/index.js`（esbuild bundle，运行时零
+  外部依赖；`@opencode-ai/plugin`/zod 均打入）。
+- 安装（实测 2026-08-16）：把 `dist/index.js` 复制到项目的
+  `.opencode/plugins/dsv4-anchored.js`（opencode 自动发现 `.opencode/plugins/
+  *.{ts,js}`，`ConfigPlugin.load`）；或全局
+  `~/.config/opencode/plugins/`。
+  - 注意：opencode.json 的配置字段是 **`plugin`**（单数数组，指向包目录/
+    npm 名），不是 `plugins`。
+- 插件由用户显式安装，安装即生效（D1），无需 agent 配置；
+  `engines.opencode >= 1.18.18`。
 
 ### 8.2 配置项（插件 options）
 

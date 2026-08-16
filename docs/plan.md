@@ -34,9 +34,12 @@ eslint、prettier。
 
 **当前进度**（更新于每次推进后）：
 
-- P0：完成（0.1 验证 node --test glob 可用；0.2 test 脚本已改 glob）
-- P1.1：完成（verify.ts + verify.test.ts，TC-1-17~27 全绿，typecheck 过）
-- 其余全部 pending（见各阶段 checkbox）
+- P0~P2：完成（82 测试全绿，L1 纯函数 + L2 fake client 集成）
+- P3：完成（插件入口 + SDK 适配 + 死锁/messageID 修复 + build/lint/typecheck
+  干净 + CLI 冒烟通过）
+- P4：主体完成（TC-3-1~6、TC-3-9 ✅；TC-3-7 compaction / TC-3-8 探针失败 /
+  TC-3-10 中文 待验证）
+- P5：进行中（docs 同步中）
 
 ## Definition of Done（整体完成标准）
 
