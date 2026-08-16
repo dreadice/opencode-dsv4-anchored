@@ -522,3 +522,6 @@ decisions.md 术语表 + D5 round-7 修订 + D12、research.md §5.1/§5.2/§5.3
 3. docs 收尾（testing.md TC-3 结果回填 round-9；plan.md 进度；P4 结论：
    官方端点 v4-pro 0 工具才 we）
 4. 真机验证 D13 全链路（锚定轮 we → 自动轮 2 → 解锁 → 判别）
+5. **移除中文词表 ZH_TERMS**（round-9 确认）：zero 方案锚定消息为固定英文，
+   锚定回复（判别对象）恒英文 → 中文实验词表（`我们`/`让我`/`我来`/`我先`）
+   用不到——后续实现时从 verify.ts/design/testing/decisions 一并去掉
