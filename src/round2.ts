@@ -46,6 +46,7 @@ export type Round2Ctx = {
           parts: Array<Record<string, unknown>>;
           agent?: string;
           model?: {providerID: string; modelID: string};
+          noReply?: boolean;
         };
       }): Promise<unknown>;
     };
@@ -121,61 +122,102 @@ export async function sendRound2(
   map.delete(sessionID);
   void savePendingStore(ctx.pendingStore, ctx.pendingFile);
   sending.add(sessionID);
+  let firstSent = false;
   try {
     const session = await ctx.client.session.get({path: {id: sessionID}});
-    const parts: Array<Record<string, unknown>> = [];
-    if (ctx.options.injectSystem !== false) {
-      const key = probeKey(
-        session.directory,
-        session.agent,
-        session.model?.id ?? ''
-      );
-      const probe = ctx.probeStore.map.get(key);
-      if (probe?.status === 'ok') {
-        const system = ctx.options.firstTurnFilter
-          ? filterFirstTurnSystem(probe.system, ctx.options.firstTurnFilter)
-          : probe.system;
-        parts.push(
-          buildInjectionPart(
-            system,
-            sessionID,
-            pending.messageID,
-            injectionMarkerFor(session.agent, session.model?.id ?? '')
-          )
-        );
-      }
+    const model = session.model
+      ? {providerID: session.model.providerID, modelID: session.model.id}
+      : undefined;
+    const systemPart = buildSystemPart(ctx, session, sessionID, pending);
+
+    if (systemPart) {
+      // 1) 真实任务先入库（noReply 不跑，标题生成只看这条，看不到 system）
+      await ctx.client.session.prompt({
+        path: {id: sessionID},
+        body: {
+          parts: pending.parts,
+          agent: session.agent,
+          model,
+          noReply: true,
+        },
+      });
+      firstSent = true;
+      // 2) 注入 system 的消息再跑（synthetic，TUI 隐藏）
+      const promptPromise = ctx.client.session.prompt({
+        path: {id: sessionID},
+        body: {
+          parts: [systemPart],
+          agent: session.agent,
+          model,
+        },
+      });
+      ctx.toast?.({
+        title: 'dsv4-anchored',
+        message: '轮 2 已自动发出（真实任务 + 完整工具）',
+        variant: 'info',
+      });
+      await promptPromise;
+    } else {
+      // 没有 system 可注入时，直接跑真实任务
+      const promptPromise = ctx.client.session.prompt({
+        path: {id: sessionID},
+        body: {
+          parts: pending.parts,
+          agent: session.agent,
+          model,
+        },
+      });
+      ctx.toast?.({
+        title: 'dsv4-anchored',
+        message: '轮 2 已自动发出（真实任务 + 完整工具）',
+        variant: 'info',
+      });
+      await promptPromise;
     }
-    parts.push(...pending.parts);
-    const promptPromise = ctx.client.session.prompt({
-      path: {id: sessionID},
-      body: {
-        parts,
-        agent: session.agent,
-        model: session.model
-          ? {providerID: session.model.providerID, modelID: session.model.id}
-          : undefined,
-      },
-    });
-    // toast 在“已发出”时立即提示，不等整个 ReAct 跑完。
-    ctx.toast?.({
-      title: 'dsv4-anchored',
-      message: '轮 2 已自动发出（真实任务 + 完整工具）',
-      variant: 'info',
-    });
-    await promptPromise;
     ctx.logger.info('round2.sent', {
       sessionID,
-      partCount: parts.length,
-      sysInjected: parts.length > pending.parts.length,
+      partCount: pending.parts.length + (systemPart ? 1 : 0),
+      sysInjected: Boolean(systemPart),
     });
     await verifyAfterRound2(ctx, sessionID);
     return true;
   } catch (error) {
-    map.set(sessionID, pending);
-    void savePendingStore(ctx.pendingStore, ctx.pendingFile);
+    if (!firstSent) {
+      map.set(sessionID, pending);
+      void savePendingStore(ctx.pendingStore, ctx.pendingFile);
+    }
     ctx.logger.warn('round2.fail', {sessionID, error: String(error)});
     return false;
   } finally {
     sending.delete(sessionID);
   }
+}
+
+function buildSystemPart(
+  ctx: Round2Ctx,
+  session: {
+    directory: string;
+    agent: string;
+    model?: {id: string; providerID: string};
+  },
+  sessionID: string,
+  pending: {messageID: string}
+): Record<string, unknown> | undefined {
+  if (ctx.options.injectSystem === false) return undefined;
+  const key = probeKey(
+    session.directory,
+    session.agent,
+    session.model?.id ?? ''
+  );
+  const probe = ctx.probeStore.map.get(key);
+  if (probe?.status !== 'ok') return undefined;
+  const system = ctx.options.firstTurnFilter
+    ? filterFirstTurnSystem(probe.system, ctx.options.firstTurnFilter)
+    : probe.system;
+  return buildInjectionPart(
+    system,
+    sessionID,
+    pending.messageID,
+    injectionMarkerFor(session.agent, session.model?.id ?? '')
+  );
 }

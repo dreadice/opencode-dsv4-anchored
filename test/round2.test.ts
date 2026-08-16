@@ -53,7 +53,7 @@ function seedProbe(ctx: Round2Ctx, directory = '/proj', agent = 'build') {
   return key;
 }
 
-test('TC-2-28: session.idle → 轮 2 自动发出（user system + pending 真实 parts，清 pending）', async () => {
+test('TC-2-28: session.idle → 轮 2 自动发出（先真实任务 noReply，再 user system）', async () => {
   const {ctx, client, pendingStore} = makeCtx();
   seedProbe(ctx);
   addSession(client, {id: 'ses_1'});
@@ -62,11 +62,7 @@ test('TC-2-28: session.idle → 轮 2 自动发出（user system + pending 真�
     messageID: 'msg_1',
     ts: Date.now(),
   });
-  let promptBody: unknown;
-  client.setPromptHandler(async (id, body) => {
-    promptBody = body;
-    return {};
-  });
+  client.setPromptHandler(async () => ({}));
   const ok = await sendRound2(ctx, 'ses_1');
   assert.equal(ok, true);
   assert.equal(
@@ -78,21 +74,34 @@ test('TC-2-28: session.idle → 轮 2 自动发出（user system + pending 真�
     client._toasts.some(t => t.message.includes('轮 2 已自动发出')),
     '轮 2 应发 TUI toast'
   );
-  const body = promptBody as {
-    parts: Array<Record<string, unknown>>;
-    agent: string;
-    model: {providerID: string; modelID: string};
-  };
-  assert.equal(body.agent, 'build');
-  assert.deepEqual(body.model, {
+  assert.equal(client._promptCalls.length, 2, '应分两条消息发送');
+  const [first, second] = client._promptCalls.map(
+    c =>
+      c.body as {
+        parts: Array<Record<string, unknown>>;
+        agent: string;
+        model: {providerID: string; modelID: string};
+        noReply?: boolean;
+      }
+  );
+  assert.equal(first.agent, 'build');
+  assert.deepEqual(first.model, {
     providerID: 'opencode',
     modelID: MODEL.modelID,
   });
-  assert.ok(!('tools' in body), '轮 2 不带 tools（不替换 permission）');
-  const texts = body.parts.map(p => String(p.text ?? ''));
-  assert.ok(texts[0]!.includes(INJECT_MARKER), 'user system part 在前');
+  assert.equal(first.noReply, true, '真实任务先 noReply 入库');
+  assert.ok(!('tools' in first), '轮 2 不带 tools（不替换 permission）');
+  assert.equal(first.parts.length, 1);
+  assert.equal(String(first.parts[0]!.text), 'real task');
+  assert.equal(second.agent, 'build');
+  assert.deepEqual(second.model, {
+    providerID: 'opencode',
+    modelID: MODEL.modelID,
+  });
+  assert.ok(!('tools' in second), '轮 2 不带 tools（不替换 permission）');
+  const texts = second.parts.map(p => String(p.text ?? ''));
+  assert.ok(texts[0]!.includes(INJECT_MARKER), 'user system part 在第二条');
   assert.ok(texts[0]!.includes('SYSTEM-FULL'), '探针捕获 system');
-  assert.ok(texts[1]!.includes('real task'), 'pending 真实消息在后');
   assert.ok(
     client._logs.some(l => l.msg.includes('round2.sent')),
     'round2.sent 日志'

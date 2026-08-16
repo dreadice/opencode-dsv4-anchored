@@ -5,7 +5,7 @@
 
 ## ISSUE-001: `<｜DSML｜tool_calls>` 标题乱输出复现
 
-- **状态**：`investigating`
+- **状态**：`fixed`（拆两条 user 消息方案，0.1.4-dev）
 - **现象**：用户反馈 `<｜DSML｜tool_calls>` 标题乱输出又出现。
 - **已有防护**：`system-transform.ts` 对标题生成请求放行，不替换 minimal。
 - **serve 验证（0.1.3+）**：
@@ -15,15 +15,17 @@
   - 因此标题乱输出不是“system 被替换”导致，而是**标题模型看到了轮 2 注入的
     完整 system user part**（`[dsv4-anchored:injected]:...`），flash-free 小模型
     据此输出了 `<tool_calls>`。
-- **待办**：
-  - 确认是否需要保留 AI 自动标题；若不需要，可在 `sendRound2` 前用真实任务
-    文本设置一个简单标题，跳过 `ensureTitle`。
-  - 若需要保留 AI 标题，需让标题生成上下文排除 synthetic 注入块（opencode
-    目前 `ensureTitle` 会包含该 user 消息的全部 parts，插件侧较难干净过滤）。
-  - **已确认不可行**：opencode 没有暴露“标题生成请求的 messages” hook——
-    title 走 `llm.stream` 直接调用，只触发 `system.transform` / `chat.params` /
-    `chat.headers`，没有 `messages.transform` / `chat.message`。因此无法在
-    title 请求里注入/删除第二个 part 来屏蔽 synthetic 注入块。
+- **修复（拆两条 user 消息）**：
+  - 轮 2 先发真实任务（`noReply: true`，只入库不跑），再发 synthetic system
+    消息并启动模型。
+  - 标题生成只看到第一条真实任务，看不到 synthetic system，因此不再输出
+    `<tool_calls>`。
+  - 注意：当前 serve 验证标题保持默认（未自动生成），需要进一步确认 AI 标题
+    是否要恢复；但至少不再出现 `<tool_calls>`。
+- **已确认不可行**：opencode 没有暴露“标题生成请求的 messages” hook——
+  title 走 `llm.stream` 直接调用，只触发 `system.transform` / `chat.params` /
+  `chat.headers`，没有 `messages.transform` / `chat.message`。因此无法在
+  title 请求里注入/删除第二个 part 来屏蔽 synthetic 注入块。
 
 ## ISSUE-002: 轮 2 toast 时机误导 + verified 要等下一次用户消息
 

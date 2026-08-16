@@ -310,6 +310,12 @@ export async function ensureState(
     (stage === 'unsealed' || (stage === 'verified' && changed)) &&
     options.injectSystem !== false &&
     !hasInjectionMarkerFor(allParts, session.agent, input.model.modelID) &&
+    // 当前消息本身已经带了注入标记（例如轮 2 的 synthetic system 消息）时不再注入
+    !input.outputParts.some(
+      p =>
+        typeof p.text === 'string' &&
+        p.text.includes(injectionMarkerFor(session.agent, input.model.modelID))
+    ) &&
     probe.system
   ) {
     // 注入 user system（D13 轮 2 由 sendRound2 携带；此路径为后续消息/resume/

@@ -479,25 +479,39 @@ test('TC-2-30: ensure 悬挂补发——pending 存在 + 锚定回复已落库 �
   await new Promise(r => setImmediate(r));
   assert.equal(parts.length, 1, '当前消息正常放行（不推迟不替换）');
   assert.equal((parts[0] as {text: string}).text, 'second');
-  assert.ok(client._promptCalls.length === 1, '补发一次轮 2');
-  const body = client._promptCalls[0]!.body as {
-    parts: Array<Record<string, unknown>>;
-    agent: string;
-    model?: {providerID: string; modelID: string};
-  };
-  assert.ok(!('tools' in body), '轮 2 不带 tools（不替换 permission）');
-  assert.equal(body.agent, 'build');
-  assert.deepEqual(body.model, {
+  assert.ok(
+    client._promptCalls.length === 2,
+    '补发轮 2（真实任务 noReply + system）'
+  );
+  const [first, second] = client._promptCalls.map(
+    c =>
+      c.body as {
+        parts: Array<Record<string, unknown>>;
+        agent: string;
+        model?: {providerID: string; modelID: string};
+        noReply?: boolean;
+      }
+  );
+  assert.ok(!('tools' in first), '轮 2 不带 tools（不替换 permission）');
+  assert.equal(first.agent, 'build');
+  assert.deepEqual(first.model, {
     providerID: 'opencode',
     modelID: MODEL.modelID,
   });
-  const texts = body.parts.map(p => String(p.text ?? ''));
+  assert.equal(first.noReply, true, '真实任务先 noReply 入库');
+  assert.equal(String(first.parts[0]!.text), 'first');
+  assert.ok(!('tools' in second), '轮 2 不带 tools（不替换 permission）');
+  assert.equal(second.agent, 'build');
+  assert.deepEqual(second.model, {
+    providerID: 'opencode',
+    modelID: MODEL.modelID,
+  });
+  const texts = second.parts.map(p => String(p.text ?? ''));
   assert.ok(
     texts[0]!.includes(INJECT_MARKER),
-    'user system part 在前（带幂等标记）'
+    'user system part 在第二条（带幂等标记）'
   );
   assert.ok(texts[0]!.includes('SYSTEM-FULL'), '注入探针捕获 system');
-  assert.ok(texts[1]!.includes('first'), 'pending 真实消息在后');
   assert.equal(
     ctx.pendingStore.map.has('ses_dangling'),
     false,
