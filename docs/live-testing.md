@@ -24,8 +24,9 @@ cp dist/index.js /tmp/opencode/smoke/.opencode/plugins/dsv4-anchored.js
   `.opencode/plugins/`）
 - **不要同时存在 `.opencode/plugins/*.js` 和 `plugin` 配置**（双加载会导致
   chat.message 触发两次、注入行为错乱）
-- 安装方式（opencode 官方）：`.opencode/plugins/*.{ts,js}` 自动发现；配置字段
-  是 `plugin`（单数）
+- 安装方式（opencode 官方仅两种，均实测）：`.opencode/plugins/*.{ts,js}`
+  自动发现；或 `"plugin": [["@dreadice/opencode-dsv4-anchored", {}]]`
+  （npm 包，已发布 0.1.0）
 
 ## 2. 配置（opencode.json）
 

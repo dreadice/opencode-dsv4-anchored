@@ -78,6 +78,20 @@ cat ~/.local/share/opencode/dsv4-anchored/probe-cache.json   # 探针缓存/状�
 事件链：`probe.success → chat.message(seeded) → round2.sent → unlock →
 verify.passed/giveup`。
 
+## 与其他插件共存
+
+命名空间全部隔离（哨兵 permission `__dsv4_stage__`、幂等标记
+`[dsv4-anchored:injected]`、状态文件 `~/.local/share/opencode/dsv4-anchored/`、
+日志前缀 `dsv4-anchored`），互不干扰。已知交互点：
+
+- **`experimental.chat.system.transform` 是共享输出**：多个插件都改同一个
+  `output.system` 数组，**后注册者生效**——本插件会把 system 整体替换为
+  minimal persona。与同样替换 system 的插件并存时，行为取决于注册顺序。
+- **锚定轮 `deny *` 会暂时隐藏其他插件注册的工具**：解锁后按 agent ruleset
+  恢复（build 的 `*: allow` 会放行一切，与原生一致），不影响长期行为。
+- chat.message 的 parts 注入是叠加的（本插件 prepend 自己的 part），不删除
+  其他插件的内容。
+
 ## 文档
 
 - `docs/design.md` — 系统设计（目标/行为/时序/状态机/配置/验证）

@@ -26,8 +26,10 @@ flash-free）、round-9 zero-anchored 时序定案（已落档，**代码未实�
   **`session.idle`**（busy 窗口会丢 runLoop，research.md §4.12 / decisions.md
   D13 修订）；锚定消息不加 marker；ensure 补发方案定案；**文档已更新，
   src 待实现**
-- 安装方式：`dist/index.js` → `.opencode/plugins/`（实测；配置字段 `plugin`
-  单数；options 用 `plugin: [["路径", {options}]]` 数组形式）
+- 安装方式（opencode 官方仅两种，已发布 npm）：`"plugin": [["@dreadice/
+opencode-dsv4-anchored", {}]]`（推荐）或 `dist/index.js` →
+  `.opencode/plugins/`（实测；配置字段 `plugin` 单数；options 用
+  `plugin: [["路径", {options}]]` 数组形式）
 
 ## 必须首先阅读的文档（已有，勿重复研究）
 
@@ -354,9 +356,13 @@ action:"allow"}`（任意字符串，不匹配任何真实工具，惰性）；`
 
 ## 当前 git 状态
 
-- 全部实现与 docs 已提交（HEAD `dc378d7`）：docs round-10 落档、假工具移除、
-  D13 实现、prettier 重排
-- 剩余：D13 真机验证（TC-3-11，待用户跑 opencode）与测试结果回填
+- 全部实现与 docs 已提交（HEAD `063db73`）：docs round-10 落档、假工具移除、
+  D13 实现、真机修复（4 项）、README/AGENTS/LICENSE、npm 发布支持、
+  live-testing 改名、安装方式定稿（两种）
+- 已发布 npm：**`@dreadice/opencode-dsv4-anchored@0.1.0`**（官方 registry，
+  已验证三种链路：手工 .js / npm 包 / serve 全链路）
+- git 已推 GitHub（`origin` = dreadice/opencode-dsv4-anchored，main 同步）
+- 剩余：D13 真机验证结果已回填（TC-3-11 ✅）；无未决事项
 
 ## Suggested skills
 
@@ -540,6 +546,11 @@ tasks.` 到句号，default.txt 第一行有两句——第二句 "Use the instr
    锚定轮 we（v4-pro + flash-free）→ 自动轮 2（真实任务 + user system）→ 解锁 →
    工具干活（bash/glob/read）→ `verify.passed`（哨兵 verified 落库）
 5. 移除 ZH_TERMS —— **已完成**（verify.ts/design/testing/decisions）
+6. npm 发布 —— **已完成**（`@dreadice/opencode-dsv4-anchored@0.1.0`，
+   官方 registry + 2FA token；publishConfig 强制官方 registry）
+7. 安装方式定稿 —— **已完成**（opencode 官方仅本地文件/npm 两种；git 引用
+   不在官方支持范围，README/design §8.1/live-testing 已同步；
+   README 补「与其他插件共存」交互点说明）
 
 **真机发现并修复（round-10，详见 live-testing.md §5.1）**：插件导出必须全为函数
 （ZERO_ANCHOR_TEXT 具名导出导致加载失败）；`session.permission` wire 可缺省

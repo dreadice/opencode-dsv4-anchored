@@ -314,16 +314,19 @@ logError`（`handlers/control.ts:28-39`）；级别仅 debug/info/warn/error，
 
 ### 8.1 安装
 
-- 构建：`npm run build` 产出自包含 `dist/index.js`（esbuild bundle，运行时零
-  外部依赖；`@opencode-ai/plugin`/zod 均打入）。
-- 安装（实测 2026-08-16）：把 `dist/index.js` 复制到项目的
-  `.opencode/plugins/dsv4-anchored.js`（opencode 自动发现 `.opencode/plugins/
-*.{ts,js}`，`ConfigPlugin.load`）；或全局
-  `~/.config/opencode/plugins/`。
-  - 注意：opencode.json 的配置字段是 **`plugin`**（单数数组，指向包目录/
-    npm 名），不是 `plugins`。
+opencode 官方支持两种插件加载方式（本地文件 / npm 包），互斥使用：
+
+- **npm 包（推荐，已发布）**：opencode.json 配置
+  `"plugin": [["@dreadice/opencode-dsv4-anchored", {}]]`（首次加载自动安装，
+  `engines.opencode` 兼容检查，入口走 `exports["./server"]`）。
+- **本地文件**：`npm run build` 产出自包含 `dist/index.js`（esbuild bundle，
+  运行时零外部依赖）→ 复制到项目的 `.opencode/plugins/dsv4-anchored.js`
+  （opencode 自动发现 `.opencode/plugins/*.{ts,js}`，`ConfigPlugin.load`）；
+  或全局 `~/.config/opencode/plugins/`。
+  - 注意：opencode.json 的配置字段是 **`plugin`**（单数数组），不是 `plugins`。
 - 插件由用户显式安装，安装即生效（D1），无需 agent 配置；
   `engines.opencode >= 1.18.18`。
+- git 引用不在官方支持范围（v1.18.18 文档仅本地文件/npm 两种），勿用。
 
 ### 8.2 配置项（插件 options）
 
