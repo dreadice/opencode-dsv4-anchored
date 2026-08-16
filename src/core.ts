@@ -29,7 +29,8 @@ export type CoreClient = {
       agent: string;
       parentID?: string;
       model?: {id: string; providerID: string};
-      permission: Rule[];
+      /** wire 兼容：新会话可能无 permission 字段（serve 实测）→ 调用方需 `?? []`。 */
+      permission?: Rule[];
     }>;
     update(opts: {
       path: {id: string};
@@ -43,7 +44,9 @@ export type CoreClient = {
     >;
   };
   app: {
-    agents(): Promise<Array<{id: string; permission: Rule[]}>>;
+    /** wire Agent 用 `name` 标识（serve 实测 `/agent` 无 id 字段；permission
+     * 为 Rule[] 形，可能缺省）。 */
+    agents(): Promise<Array<{name: string; permission?: Rule[]}>>;
   };
 };
 
@@ -149,13 +152,14 @@ export async function ensureState(
   });
   if (probe.bypass) {
     logger.warn('bypass', {key, reason: 'probe failed or ttl'});
-    return {action: 'bypass', stage: getStage(session.permission)};
+    // wire 兼容：新会话 GET /session/:id 可能无 permission 字段（serve 实测）
+    return {action: 'bypass', stage: getStage(session.permission ?? [])};
   }
 
   const history = await client.session.messages({path: {id: input.sessionID}});
   const boundary = lastCompactionBoundary(history);
   const allParts = history.flatMap(m => m.parts);
-  const stage = getStage(session.permission);
+  const stage = getStage(session.permission ?? []);
   const post = boundary === -1 ? history : history.slice(boundary + 1);
   const anchorDone = post.some(m => m.info.role === 'assistant');
 
@@ -233,8 +237,8 @@ export async function ensureState(
     if (stage === 'seeded' && hasSignal) {
       const agents = await client.app.agents();
       const agentRuleset =
-        agents.find(a => a.id === session.agent)?.permission ?? [];
-      const denies = extractSessionDenies(session.permission);
+        agents.find(a => a.name === session.agent)?.permission ?? [];
+      const denies = extractSessionDenies(session.permission ?? []);
       await client.session.update({
         path: {id: input.sessionID},
         body: {permission: unlockRules(agentRuleset, denies)},

@@ -20,7 +20,7 @@ export async function compacting(
   whitelist: string[]
 ): Promise<void> {
   const session = await ctx.client.session.get({path: {id: sessionID}});
-  const stage = getStage(session.permission);
+  const stage = getStage(session.permission ?? []);
   if (stage === 'pristine') return;
   await ctx.client.session.update({
     path: {id: sessionID},

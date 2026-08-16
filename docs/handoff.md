@@ -533,16 +533,18 @@ tasks.` 到句号，default.txt 第一行有两句——第二句 "Use the instr
 
 ## 待办（新上下文）
 
-1. 实现 D13 时序：pending 存储（存盘）+ chat.message 首轮替换 + **event
-   （session.idle）** 自动 prompt 轮 2 + ensure 补发 + 测试（fake client 扩展
-   prompt 持久化模拟）——**设计已定案（round-10），文档已更新，src 待实现**
-2. 默认配置定 zero 形态（`whitelist: []` + `anchorText` 默认启用 + 注入
-   默认去 persona）
-3. docs 收尾（testing.md TC-3 结果回填 round-9；plan.md 进度；P4 结论：
-   官方端点 v4-pro 0 工具才 we）——**本会话已完成**
-4. 真机验证 D13 全链路（锚定轮 we → 自动轮 2 → 解锁 → 判别）
-5. **移除中文词表 ZH_TERMS**（round-9 确认）——**本会话随实现一起做**（verify.ts
-   / design / testing / decisions 已同步更新）
+1. 实现 D13 时序 —— **已完成（round-10）**，真机全链路验证通过（见下）
+2. 默认配置 zero 形态 —— **已完成**（whitelist `[]` + anchorText 默认 + 注入默认去 persona）
+3. docs 收尾 —— **已完成**（testing TC-3 回填、plan 进度、P4 结论、cli-testing §5.1）
+4. 真机验证 D13 全链路 —— **已完成（2026-08-16，`opencode serve` + HTTP API）**：
+   锚定轮 we（v4-pro + flash-free）→ 自动轮 2（真实任务 + user system）→ 解锁 →
+   工具干活（bash/glob/read）→ `verify.passed`（哨兵 verified 落库）
+5. 移除 ZH_TERMS —— **已完成**（verify.ts/design/testing/decisions）
+
+**真机发现并修复（round-10，详见 cli-testing.md §5.1）**：插件导出必须全为函数
+（ZERO_ANCHOR_TEXT 具名导出导致加载失败）；`session.permission` wire 可缺省
+（serve 新会话）→ `?? []`；wire Agent 用 `name` 标识（非 id）→ agent ruleset
+匹配修复；`chat.message` 的 `input.model` 可用 `output.message.model` 兜底。
 
 ## 本轮讨论留档（round-10，2026-08-16）：D13 实现前源码核实与修订
 

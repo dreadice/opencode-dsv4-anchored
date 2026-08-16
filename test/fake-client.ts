@@ -19,6 +19,7 @@ export type FakeMessage = {
 
 export type FakeAgent = {
   id: string;
+  name: string;
   prompt: string;
   permission: Rule[];
 };
@@ -57,6 +58,7 @@ export type FakeClient = {
 
 export const BUILD_AGENT: FakeAgent = {
   id: 'build',
+  name: 'build',
   prompt: 'You are a helpful software engineer assistant.',
   permission: [
     {permission: '*', pattern: '*', action: 'allow'},
@@ -66,6 +68,7 @@ export const BUILD_AGENT: FakeAgent = {
 
 export const EXPLORE_AGENT: FakeAgent = {
   id: 'explore',
+  name: 'explore',
   prompt: 'You are a read-only explorer.',
   permission: [
     {permission: '*', pattern: '*', action: 'deny'},

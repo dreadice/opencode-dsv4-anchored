@@ -18,8 +18,10 @@ const DEFAULT_CACHE_DIR = join(
   '.local/share/opencode/dsv4-anchored'
 );
 
-/** zero-anchored 锚定消息（dsh zero-anchored-standard 原文）。 */
-export const ZERO_ANCHOR_TEXT =
+/** zero-anchored 锚定消息（dsh zero-anchored-standard 原文）。注意：不得具名
+ * 导出（opencode 插件加载器要求模块所有导出都是函数，
+ * `plugin/index.ts:94-109` getLegacyPlugins）。 */
+const ZERO_ANCHOR_TEXT =
   'This round is a test. Tools are not open yet; all tools will open next round.';
 
 type Dsv4Options = {
@@ -80,10 +82,13 @@ export const Dsv4Anchored: Plugin = async ({client}, options) => {
 
   return {
     'chat.message': async (input, output) => {
-      if (!input.model) return;
+      // 健壮性（serve HTTP 实测）：POST /session/:id/message 不带 model 时
+      // input.model 为 undefined——用 output.message.model（已解析）兜底。
+      const model = input.model ?? output.message.model;
+      if (!model) return;
       await ensureState(ctx, {
         sessionID: input.sessionID,
-        model: input.model,
+        model,
         messageID: output.message.id,
         outputParts: output.parts,
       });
