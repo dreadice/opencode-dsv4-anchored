@@ -90,6 +90,12 @@ chat.message（真实会话 S，首轮）
 - 探针会话无 session permission → 捕获**未过滤的自然 system**（MCP 说明全量），
   正是"原 system 全部内容"的语义。
 - 探针消息自身触发 `chat.message`/`event` → 按 probeSessions 集合跳过。
+- **探针错误静默（round-10）**：探针 runLoop 用 `DOMException(..., "AbortError")`
+  终止（而非普通 Error）——processor 的 `fromError`（message-v2.ts:606）会把它
+  映射成 `AbortedError`（`namedError("MessageAbortedError")`，schema
+  `v1/session.ts:43`）→ `session.error` 事件的 `error.name ===
+"MessageAbortedError"` → **TUI 跳过不弹报错 toast**（tui/app.tsx:1022，
+  官方预留的静默错误类型）；message 仍避开 retry 禁词（`probeTerminationError`）。
 
 ### 4.3 缓存与频率
 
@@ -180,6 +186,11 @@ info.role === "assistant"）触发轮 2，但 busy 窗口下不安全：
   （prompt.ts:193-224）按"含非 synthetic part 的 user 消息"判定真实消息——
   锚定轮首条消息全 synthetic → 不算真实 → **标题生成自动跳过锚定内容**；
   轮 2 消息含真实任务 part → 标题基于**真实任务**生成。无需额外处理。
+- **标题生成请求放行（round-10 修复）**：标题模型走 `llm.stream({agent:
+title, system: []})`（prompt.ts:224-249）——同样触发 system.transform！
+  若被替换成 minimal，title.txt 指令丢失 → 标题乱输出（实测 `<｜DSML｜
+tool_calls>`）。`system.transform` 按 `output.system[0]` 含
+  "You are a title generator"（title.txt 首行）**放行**标题请求。
 
 ## 5. 阶段状态机（哨兵 + DB 持久化）
 
