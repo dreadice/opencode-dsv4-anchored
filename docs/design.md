@@ -400,15 +400,15 @@ grep dsv4-anchored ~/.local/share/opencode/log/opencode.log
    - 重启 resume：pending 悬挂 → ensure 补发 `round2.sent`；verified 会话
      不再注入；seeded/unsealed 会话按边界后信号解锁、按窗口判别。
    - compaction 后：回退 seeded（重新注入 + 重新判别）。
-3. **判别效果实测**（唯一真正待验证项）：按 dsh verify 清单复验——锚定轮
-   header tools 数量（0 个）、锚定回复首行风格、`let me` 计数，插件据此自动
-   判别（N=3 轮内达成 → verified）。
+3. **判别效果实测（round-10 已达成 ✅）**：按 dsh verify 清单复验——锚定轮
+   header tools 数量（0 个）、锚定回复 we 风格、`verify.passed`（v4-pro 与
+   flash-free 均实测，哨兵 verified 落库）。
    **不达标时的升级路径：D11 选择性剥离**（§6.1）。
 
 ## 10. 已知限制
 
-- 判别效果需实测（见 §9.3）；判别特征（首行 `We…`、`let me`=0）是 dsh 英文
-  语料的特征，非英文/中文回复可能误判未达成 → 只会停止判别（warn）不锁死。
+- 判别特征（首行 `We…`、`let me`=0）是 dsh 英文语料的特征，非英文/中文回复
+  可能误判未达成 → 只会停止判别（warn）不锁死（round-10 起锚定消息恒英文）。
 - 首轮 token 不省：注入 = 原 system 全量；收益在 system 位置最小化。
 - seeded 期白名单工具不触发 ask；解锁后按 agent ruleset 恢复。
 - 规则只增不减（append-only）：无热加载前提下无感知；compaction 回退靠追加。

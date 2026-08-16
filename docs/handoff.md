@@ -7,11 +7,11 @@
 
 项目目录：`/home/liubohan/opencode/dsv4-adapter`（git 已初始化，`.gitignore` 含
 `reference/`、`node_modules/`、`dist/`）。
-当前状态：**实现基本完成（88 测试全绿）、真机验证完成（deepseek 官方 v4-pro +
-flash-free）、round-9 zero-anchored 时序定案（已落档，**代码未实现**）**：
+当前状态：**实现完成（89 测试全绿）、真机验证完成（serve + HTTP API，v4-pro 与
+flash-free 均全链路通过）、npm 已发布（`@dreadice/opencode-dsv4-anchored@0.1.0`）**：
 
 - 实现：verify/gate/stage/inject/epoch/cache/probe/logger/core/system-transform/
-  compaction/str-replace-editor/sdk-adapter/bash-description/index
+  compaction/pending/round2/sdk-adapter/index
 - 真机（官方 v4-pro + variant max，关键实测）：
   - minimal + **0 工具** → thinking **we 风格**（"We need answer..."）✅
   - minimal + **双工具**（含 bash 描述对齐 dsh 后）→ standard-like ❌
@@ -19,13 +19,14 @@ flash-free）、round-9 zero-anchored 时序定案（已落档，**代码未实�
   - 首轮注入任何内容（即使 stripPersona）→ 破坏 we 锚定
   - **splice 修复**：`output.system = [...]` 重赋值不生效（plugin.trigger 忽略
     返回值，request.ts 用局部数组引用）→ 必须 `splice` 原地改——已修复
-- 定案（D13，已写文档，**代码未实现**）：zero-anchored 锚定轮（0 工具 + 锚定消息
-  synthetic 隐藏）→ 真实消息推迟（pending 存盘）→ 锚定回复落库后 event 自动
-  prompt 轮 2（user system 去 persona + 真实消息）→ 解锁 → 判别
-- **round-10（本会话）**：D13 设计再核实并修订——触发点 `message.updated` →
-  **`session.idle`**（busy 窗口会丢 runLoop，research.md §4.12 / decisions.md
-  D13 修订）；锚定消息不加 marker；ensure 补发方案定案；**文档已更新，
-  src 待实现**
+- **D13 zero-anchored（round-10 已实现 + 真机全链路验证）**：锚定轮（0 工具 +
+  纯锚定消息）→ 真实消息推迟（pending 存盘）→ `session.idle` 自动轮 2
+  （user system 去 persona + 真实消息）→ 解锁 → 判别 verified
+- **round-10（本会话）**：D13 实现（pending/round2/event hook + 默认 zero
+  配置）；真机发现并修复 4 项（插件导出全函数 / permission wire 缺省 /
+  Agent 用 name / chat.message model 兜底）；serve 全链路验证
+  （anchor we → round2 → 工具 → verify.passed）；npm 发布 + 安装方式定稿
+  （官方仅本地文件/npm 两种）
 - 安装方式（opencode 官方仅两种，已发布 npm）：`"plugin": [["@dreadice/
 opencode-dsv4-anchored", {}]]`（推荐）或 `dist/index.js` →
   `.opencode/plugins/`（实测；配置字段 `plugin` 单数；options 用
@@ -37,9 +38,9 @@ opencode-dsv4-anchored", {}]]`（推荐）或 `dist/index.js` →
   **核心参考**
 - `docs/research.md` — 完整研究报告（背景、dsh 方案、官方 Minimal 源码、opencode
   机制映射含文件:行号、探针链路 §4.9、日志机制 §4.10、移植方案、已知限制）。
-- `docs/decisions.md` — 决策记录（D1-D12）。**决定清单**（顶部含 round-7 术语表）
+- `docs/decisions.md` — 决策记录（D1-D13）。**决定清单**（顶部含 round-7 术语表）
 - `docs/testing.md` — **测试用例文档**（L1 单元 / L2 fake client 集成 / L3
-  `opencode run` 真机；TC-1-x ~ TC-3-x 用例清单）
+  真机（serve + HTTP API）；TC-1-x ~ TC-3-x 用例清单）
 - `docs/live-testing.md` — **真机测试手册**（serve + HTTP API 为主，构建部署/
   配置/命令模板/日志核对/实测结论/花钱注意）
 - `docs/plan.md` — **执行计划**（P0~P5 分阶段；TDD 红须编译通过；每模块含
@@ -535,7 +536,8 @@ tasks.` 到句号，default.txt 第一行有两句——第二句 "Use the instr
    （message.updated，info.role==="assistant"）自动 `session.prompt` 轮 2
    （user system 去 persona synthetic + 真实消息，不带 tools）→ 轮 2 消息
    触发 ensure → unlock。竞态：bypass 不替换/不存 pending；prompt 防重
-   （发前清 pending）；重启悬挂 → ensure 补发。**代码未实现**。
+   （发前清 pending）；重启悬挂 → ensure 补发。**round-9 定案时未实现；
+   round-10 已实现（触发点修订为 session.idle）并真机验证**。
 
 ## 待办（新上下文）
 

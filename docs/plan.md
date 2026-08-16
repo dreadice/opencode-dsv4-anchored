@@ -18,12 +18,13 @@
 
 1. `docs/handoff.md` — **当前状态/决策摘要/讨论留档（先读拿进度）**
 2. `docs/plan.md`（本文件）— 执行规格
-3. 需要依据时：`docs/design.md`（设计）、`docs/decisions.md`（D1-D12）、
+3. 需要依据时：`docs/design.md`（设计）、`docs/decisions.md`（D1-D13）、
    `docs/research.md`（源码事实：文件:行号）、`docs/testing.md`（用例 TC-1~3）
 
 **环境**：node v24（TS type stripping + `node --test`，**bun 未装**）；opencode
-CLI 1.18.18（`opencode run` headless）；集成测试模型
-`opencode/deepseek-v4-flash-free`（**不用 pro**；v4 pro API key 待用户提供）。
+CLI 1.18.18（`opencode run` headless / `opencode serve` + HTTP API）；集成测试
+模型 `opencode/deepseek-v4-flash-free`（免费，round-10 起实测锚定轮同样出 we，
+**调试默认用它**）；deepseek 官方 v4-pro（round-9/10 已用 key 真机验证）。
 依赖 devDeps：`@opencode-ai/plugin`/`@opencode-ai/sdk` 1.18.18、typescript、
 eslint、prettier。
 
@@ -36,12 +37,13 @@ eslint、prettier。
 
 **当前进度**（更新于每次推进后）：
 
-- P0~P2：完成（82 测试全绿，L1 纯函数 + L2 fake client 集成）
+- P0~P2：完成（89 测试全绿，L1 纯函数 + L2 fake client 集成含 D13 用例）
 - P3：完成（插件入口 + SDK 适配 + 死锁/messageID 修复 + build/lint/typecheck
   干净 + CLI 冒烟通过）
-- P4：主体完成（TC-3-1~6、TC-3-9 ✅；TC-3-7 compaction / TC-3-8 探针失败 /
-  TC-3-10 中文 待验证）
-- P5：进行中（docs 同步中）
+- P4：主体完成（TC-3-1~6、TC-3-9、TC-3-11 ✅；TC-3-10 中文已移除；
+  TC-3-7 compaction / TC-3-8 探针失败 待验证）
+- P5：完成（docs 全部终态：README/AGENTS/LICENSE、live-testing、design/
+  research/decisions/testing/plan/handoff；npm 发布 + 安装方式定稿）
 
 ## Definition of Done（整体完成标准）
 
@@ -406,8 +408,9 @@ this project."` + `reasoningEffort=max`）：
 
 ## 风险与备注
 
-- **判别模型差异**：flash-free 免费小模型思维链风格可能与 v4-pro 不同，
-  giveup 属预期；pro 验证留待用户提供 key 后补跑（P4 不依赖 pro）
+- **判别模型差异**：flash-free 实测锚定轮同样出 we（round-10）——判别可达成；
+  v4-pro 已真机验证（round-9/10，判别 verified）
+- 待验证项（低风险）：compaction 回退（TC-3-7）、探针失败旁路模拟（TC-3-8）
 - **node --test TS**：node 24 strip types 需 import 带 `.ts` 扩展名；若遇坑
   退回安装 bun（`bun test`）
 - **compaction 触发**：`experimental.session.compacting` 为压缩前置事件，

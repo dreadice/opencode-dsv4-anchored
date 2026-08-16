@@ -600,12 +600,12 @@ agent ruleset（`client.app.agents()` 取）+ session deny；提供 include/excl
 
 剩余项：
 
-1. **判别效果需实测（唯一真正的待验证项）**：round-9 实测确认 0 工具锚定轮
-   是唯一实证出 we 形态的配置（minimal + 0 工具 → we；双工具 → standard-like），
-   round-10 已按此实现（D13 时序 + 默认 `whitelist: []`）；仍需真机复验完整
-   链路（锚定轮 we → 自动轮 2 → 解锁 → 判别），插件据此自动判别（N=3 窗口
-   → verified/giveup）。**附带扰动项（D11）**：首轮 user 消息在場 AGENTS.md/
-   技能目录（dsh 首轮剥离），实测不达标时启用选择性剥离升级路径。
+1. **判别效果（round-10 已实测 ✅）**：round-9 实测确认 0 工具锚定轮是唯一
+   实证出 we 形态的配置（minimal + 0 工具 → we；双工具 → standard-like）；
+   round-10 实现后 serve 真机复验完整链路（锚定轮 we → 自动轮 2 → 解锁 →
+   判别 `verify.passed`，v4-pro 与 flash-free 均达成，哨兵 verified 落库）。
+   **附带扰动项（D11）**：轮 2 注入在場 AGENTS.md/技能目录（dsh 首轮剥离），
+   实测不达标时启用选择性剥离升级路径。
 2. **判别标记的语言依赖**：`idx(we系) < idx(let系)` 是 dsh 英文语料特征
    （思维起步取向）；中文词表曾为实验项（`我们` vs `让我`/`我来`/`我先`）——
    round-9 起 zero 方案锚定回复恒英文（锚定消息固定英文），**中文词表已移除**
