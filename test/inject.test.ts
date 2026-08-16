@@ -65,13 +65,21 @@ const REAL_SYSTEM = [
   '<available_skills>skill list</available_skills>',
 ].join('\n');
 
-test('filterFirstTurnSystem：stripPersona 去掉 default.txt 段（保留 env/AGENTS/Skills）', () => {
+test('filterFirstTurnSystem：stripPersona 只删身份声明句（保留行为要求/env/AGENTS/Skills）', () => {
   const out = filterFirstTurnSystem(REAL_SYSTEM, {stripPersona: true});
-  assert.ok(!out.includes('You are opencode,'), 'persona 应被滤掉');
   assert.ok(
-    !out.includes('IMPORTANT: You must NEVER generate'),
-    'default.txt 段整体去掉'
+    !out.includes('You are opencode, an interactive CLI tool'),
+    '身份声明句应被滤掉'
   );
+  assert.ok(
+    out.includes('Use the instructions below to assist the user.'),
+    '首句后的内容保留'
+  );
+  assert.ok(
+    out.includes('IMPORTANT: You must NEVER generate'),
+    '行为要求应保留'
+  );
+  assert.ok(out.includes('You are powered by the model named'), '模型名行保留');
   assert.ok(out.includes('<env>working dir /proj</env>'), 'env 应保留');
   assert.ok(
     out.includes('Instructions from: /proj/AGENTS.md'),

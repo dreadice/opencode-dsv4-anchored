@@ -24,9 +24,7 @@ export function hasMarker(
 ): boolean {
   return parts.some(
     p =>
-      p.type === 'text' &&
-      typeof p.text === 'string' &&
-      p.text.includes(marker)
+      p.type === 'text' && typeof p.text === 'string' && p.text.includes(marker)
   );
 }
 
@@ -62,9 +60,9 @@ export function buildInjectionPart(
 }
 
 export type FirstTurnFilter = {
-  /** 去掉 opencode 的 default.txt persona 段（`You are opencode, ...` 到
-   * `You are powered by the model named` 之前），保留模型名/env/AGENTS/
-   * 技能/MCP 等其余内容。 */
+  /** 删掉 opencode 身份声明句（`You are opencode, an interactive CLI tool...`
+   * 首句），保留 default.txt 的行为要求（IMPORTANT/工具政策/Code References）
+   * 与模型名/env/AGENTS/技能/MCP。 */
   stripPersona?: boolean;
   /** 过滤 AGENTS.md/CLAUDE.md/CONTEXT.md 段（`Instructions from:` 开头，D11）。 */
   stripInstructions?: boolean;
@@ -75,15 +73,9 @@ export type FirstTurnFilter = {
 const SEGMENT_PATTERN =
   /\n(?=Instructions from: |Skills provide specialized instructions|You are opencode,)/;
 
-/** 去掉整个 default.txt persona 段：`You are opencode,` 到
- * `\nYou are powered by the model named` 之前（default.txt 全文，system.ts
- * env 的模型名行是 persona 段边界）。 */
-function stripPersonaSection(text: string): string {
-  const start = text.indexOf('You are opencode,');
-  if (start === -1) return text;
-  const end = text.indexOf('\nYou are powered by the model named');
-  if (end === -1) return text;
-  return text.slice(0, start) + text.slice(end);
+/** 删除开篇身份声明句（"You are opencode, ..." 到首个换行），保留段内行为要求。 */
+function stripIdentity(text: string): string {
+  return text.replace(/^You are opencode,[^\n]*\n+/, '');
 }
 
 /** 首轮注入前的选择性剥离（D11 备选）：按稳定标记切段，滤掉指定段。 */
@@ -103,7 +95,7 @@ export function filterFirstTurnSystem(
         seg.startsWith('Skills provide specialized instructions')
       )
         return '';
-      if (filter.stripPersona) return stripPersonaSection(seg);
+      if (filter.stripPersona) return stripIdentity(seg);
       return seg;
     })
     .filter(seg => seg !== '')
