@@ -52,7 +52,11 @@ cp dist/index.js <项目>/.opencode/plugins/dsv4-anchored.js
 # "plugin": [["/path/to/opencode-dsv4-anchored", {}]]
 ```
 
-**3. Git 引用（⚠️ v1.18.18 实测不可用）**：
+**3. Git 引用**——先跑一次预装脚本，再用配置引用：
+
+```bash
+bash scripts/install-git-cache.sh          # clone + 构建 + 预装到 opencode 缓存
+```
 
 ```json
 {
@@ -60,11 +64,11 @@ cp dist/index.js <项目>/.opencode/plugins/dsv4-anchored.js
 }
 ```
 
-> 已验证（2026-08-16）：opencode 1.18.18 的插件安装器（`Npm.add`/Arborist）
-> 对 git spec 安装失败——缓存目录创建但为空、插件静默不加载、消息按原生处理，
-> 无错误日志。所有 git 格式（`github:` / `git+https:` / `user/repo`）在 npa
-> 解析下 `name` 均为 undefined，都会走同一条失败路径。用 npm 包方式替代，
-> 待 opencode 修复后此方式再启用。
+> 说明（2026-08-16 实测）：opencode v1.18.18 的插件安装器（`Npm.add`/Arborist）
+> 对 git spec 安装失败——缓存目录创建但为空、插件静默不加载（其运行时为
+> `bun build --compile`，Arborist 的 git 安装路径在其编译产物中失效；registry
+> 安装正常）。**加载环节本身没问题**，预装到缓存目录后即可正常使用。
+> 更新版本时重跑脚本即可。
 
 > 要求：opencode `>= 1.18.18`（`engines.opencode` 兼容检查）。
 
