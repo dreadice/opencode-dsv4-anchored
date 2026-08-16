@@ -12,8 +12,10 @@ import {
 import {verifyText, type VerifyTerms} from '@/verify';
 import {
   hasInjectionMarker,
+  hasMarker,
   buildInjectionPart,
   filterFirstTurnSystem,
+  ANCHOR_MARKER,
   type FirstTurnFilter,
 } from '@/inject';
 import {lastCompactionBoundary} from '@/epoch';
@@ -127,23 +129,31 @@ export async function ensureState(
   const stage = getStage(session.permission);
 
   let injected = false;
-  if (!hasInjectionMarker(allParts)) {
-    if (options.anchorText !== undefined) {
-      // 零工具锚定轮（zero-anchored）：prepend 固定锚定消息，真实任务不参与
-      // 首轮（复杂任务描述会污染 thinking 轨迹，dsh zero-anchored-standard）。
-      input.outputParts.unshift(
-        buildInjectionPart(options.anchorText, input.sessionID, input.messageID)
-      );
-      injected = true;
-    } else if (options.injectSystem !== false && probe.system) {
-      const system = options.firstTurnFilter
-        ? filterFirstTurnSystem(probe.system, options.firstTurnFilter)
-        : probe.system;
-      input.outputParts.unshift(
-        buildInjectionPart(system, input.sessionID, input.messageID)
-      );
-      injected = true;
-    }
+  if (
+    options.anchorText !== undefined &&
+    (stage === 'pristine' || stage === 'seeded') &&
+    !hasMarker(allParts, ANCHOR_MARKER)
+  ) {
+    // zero-anchored 锚定轮：prepend 固定锚定消息，真实任务不参与首轮。
+    input.outputParts.unshift(
+      buildInjectionPart(options.anchorText, input.sessionID, input.messageID, ANCHOR_MARKER)
+    );
+    injected = true;
+  } else if (
+    stage === 'unsealed' &&
+    options.injectSystem !== false &&
+    !hasInjectionMarker(allParts) &&
+    probe.system
+  ) {
+    // 晋升信号后（dsh 思路）：注入原始 system——去 opencode persona（default.txt
+    // 段），保留行为要求/env/AGENTS/技能/MCP；工具已由 unlock 恢复全量。
+    const system = options.firstTurnFilter
+      ? filterFirstTurnSystem(probe.system, options.firstTurnFilter)
+      : probe.system;
+    input.outputParts.unshift(
+      buildInjectionPart(system, input.sessionID, input.messageID)
+    );
+    injected = true;
   }
   logger.info('chat.message', {
     sessionID: input.sessionID,

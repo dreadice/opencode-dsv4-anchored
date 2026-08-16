@@ -5,7 +5,7 @@ import {createProbeStore, captureProbeSystem, probeKey} from '@/probe';
 import {makeLogger} from '@/logger';
 import {STAGE_PERMISSION, type Rule} from '@/stage';
 import {DEFAULT_TERMS} from '@/verify';
-import {INJECT_MARKER} from '@/inject';
+import {INJECT_MARKER, ANCHOR_MARKER} from '@/inject';
 import {
   createFakeClient,
   addSession,
@@ -71,7 +71,7 @@ const sentinel = (pattern: string): Rule => ({
   action: 'allow',
 });
 
-test('TC-2-1: pristine 首轮 → 注入 + seeded', async () => {
+test('TC-2-1: pristine 首轮 → seeded（首轮不注入，解锁后才注入）', async () => {
   const {ctx, client} = makeCtx();
   seedProbe(ctx);
   addSession(client, {id: 'ses_1'});
@@ -79,11 +79,7 @@ test('TC-2-1: pristine 首轮 → 注入 + seeded', async () => {
   const res = await ensureState(ctx, input('ses_1', parts));
   assert.equal(res.action, 'seeded');
   assert.equal(res.stage, 'seeded');
-  assert.equal((parts[0] as {type: string}).type, 'text');
-  assert.ok(
-    String((parts[0] as {text: string}).text).includes(INJECT_MARKER),
-    '注入 part 应在最前'
-  );
+  assert.equal(parts.length, 1, '首轮不注入 system（dsh：晋升信号后注入）');
   const s = client._sessions.get('ses_1')!;
   assert.ok(
     s.permission.some(r => r.permission === '*' && r.action === 'deny')
@@ -379,5 +375,5 @@ test('anchorText：首轮 prepend 固定锚定消息（优先于 system 注入�
   const first = parts[0] as {text: string};
   assert.ok(first.text.includes('This round is a test'), '锚定消息在最前');
   assert.ok(!first.text.includes('SYSTEM-FULL'), '不注入 system');
-  assert.ok(first.text.includes(INJECT_MARKER), '锚定 part 带幂等标记');
+  assert.ok(first.text.includes(ANCHOR_MARKER), '锚定 part 带 ANCHOR 标记');
 });

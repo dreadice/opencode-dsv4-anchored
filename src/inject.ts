@@ -1,6 +1,7 @@
 import {randomBytes} from 'node:crypto';
 
 export const INJECT_MARKER = '[dsv4-anchored:injected]';
+export const ANCHOR_MARKER = '[dsv4-anchored:anchor]';
 
 export type InjectionPart = {
   id: string;
@@ -16,37 +17,54 @@ export function newPartId(): string {
   return `prt_${Date.now().toString(16)}${randomBytes(8).toString('hex')}`;
 }
 
-/** 历史 parts 中是否已有注入标记（幂等判定，含 compaction 后重注入判断）。 */
-export function hasInjectionMarker(
-  parts: Array<{type: string; text?: unknown}>
+/** 历史 parts 中是否已有指定标记（幂等判定，含 compaction 后重注入判断）。 */
+export function hasMarker(
+  parts: Array<{type: string; text?: unknown}>,
+  marker: string
 ): boolean {
   return parts.some(
     p =>
       p.type === 'text' &&
       typeof p.text === 'string' &&
-      p.text.includes(INJECT_MARKER)
+      p.text.includes(marker)
   );
 }
 
-/** 注入 part：synthetic 标记 + 幂等标记文本 + 捕获的 system 全量。 */
+/** 历史 parts 中是否已有注入标记（system 注入幂等）。 */
+export function hasInjectionMarker(
+  parts: Array<{type: string; text?: unknown}>
+): boolean {
+  return hasMarker(parts, INJECT_MARKER);
+}
+
+/** 历史 parts 中是否已有锚定消息标记。 */
+export function hasAnchorMarker(
+  parts: Array<{type: string; text?: unknown}>
+): boolean {
+  return hasMarker(parts, ANCHOR_MARKER);
+}
+
+/** 注入 part：synthetic 标记 + 幂等标记文本 + 内容（system 或锚定消息）。 */
 export function buildInjectionPart(
-  system: string,
+  content: string,
   sessionID: string,
-  messageID: string
+  messageID: string,
+  marker: string = INJECT_MARKER
 ): InjectionPart {
   return {
     id: newPartId(),
     sessionID,
     messageID,
     type: 'text',
-    text: `${INJECT_MARKER}\n${system}`,
+    text: `${marker}\n${content}`,
     synthetic: true,
   };
 }
 
 export type FirstTurnFilter = {
-  /** 滤掉 opencode 身份声明句（`You are opencode, ...` 开篇），保留行为要求/
-   * 工具政策/模型名/env 等其余内容。 */
+  /** 去掉 opencode 的 default.txt persona 段（`You are opencode, ...` 到
+   * `You are powered by the model named` 之前），保留模型名/env/AGENTS/
+   * 技能/MCP 等其余内容。 */
   stripPersona?: boolean;
   /** 过滤 AGENTS.md/CLAUDE.md/CONTEXT.md 段（`Instructions from:` 开头，D11）。 */
   stripInstructions?: boolean;
@@ -57,9 +75,15 @@ export type FirstTurnFilter = {
 const SEGMENT_PATTERN =
   /\n(?=Instructions from: |Skills provide specialized instructions|You are opencode,)/;
 
-/** 删除开篇身份声明句（"You are opencode, ..." 到首个换行），保留段内行为要求。 */
-function stripIdentity(text: string): string {
-  return text.replace(/^You are opencode,[^\n]*\n+/, '');
+/** 去掉整个 default.txt persona 段：`You are opencode,` 到
+ * `\nYou are powered by the model named` 之前（default.txt 全文，system.ts
+ * env 的模型名行是 persona 段边界）。 */
+function stripPersonaSection(text: string): string {
+  const start = text.indexOf('You are opencode,');
+  if (start === -1) return text;
+  const end = text.indexOf('\nYou are powered by the model named');
+  if (end === -1) return text;
+  return text.slice(0, start) + text.slice(end);
 }
 
 /** 首轮注入前的选择性剥离（D11 备选）：按稳定标记切段，滤掉指定段。 */
@@ -79,7 +103,7 @@ export function filterFirstTurnSystem(
         seg.startsWith('Skills provide specialized instructions')
       )
         return '';
-      if (filter.stripPersona) return stripIdentity(seg);
+      if (filter.stripPersona) return stripPersonaSection(seg);
       return seg;
     })
     .filter(seg => seg !== '')

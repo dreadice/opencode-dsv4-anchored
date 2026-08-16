@@ -16,6 +16,10 @@ const DEFAULT_CACHE_FILE = join(
   '.local/share/opencode/dsv4-anchored/probe-cache.json'
 );
 
+/** zero-anchored 锚定消息（dsh zero-anchored-standard 原文）。 */
+export const ZERO_ANCHOR_TEXT =
+  'This round is a test. Tools are not open yet; all tools will open next round.';
+
 type Dsv4Options = {
   models?: string[];
   whitelist?: string[];
@@ -36,7 +40,8 @@ function resolveOptions(options?: PluginOptions): EnsureOptions {
     verifyN: opts.verifyN ?? 3,
     verifyTerms: opts.verifyTerms ?? DEFAULT_TERMS,
     probeTtlMs: opts.probeTtlMs ?? 300_000,
-    firstTurnFilter: opts.firstTurnFilter,
+    // 默认注入去 opencode persona 的原始 system（dsh 思路：晋升信号后注入）
+    firstTurnFilter: opts.firstTurnFilter ?? {stripPersona: true},
     injectSystem: opts.injectSystem,
     anchorText: opts.anchorText,
   };
