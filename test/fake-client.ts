@@ -26,12 +26,11 @@ export type FakeLog = {msg: string; level?: string; [k: string]: unknown};
 
 export type FakeClient = {
   session: {
-    get(path: {id: string}): Promise<FakeSession>;
+    get(opts: {path: {id: string}}): Promise<FakeSession>;
     update(
-      path: {id: string},
-      body: {permission?: Rule[]; title?: string}
+      opts: {path: {id: string}; body?: {permission?: Rule[]; title?: string}}
     ): Promise<FakeSession>;
-    messages(path: {id: string}): Promise<FakeMessage[]>;
+    messages(opts: {path: {id: string}}): Promise<FakeMessage[]>;
     create(opts: {
       query?: {directory?: string};
       body?: {title?: string};
@@ -96,18 +95,18 @@ export function createFakeClient(opts?: {
 
   return {
     session: {
-      async get({id}) {
-        return session(id);
+      async get({path}) {
+        return session(path.id);
       },
-      async update({id}, body) {
-        const s = session(id);
-        if (body.permission)
+      async update({path, body}: {path: {id: string}; body?: {permission?: Rule[]; title?: string}}) {
+        const s = session(path.id);
+        if (body?.permission)
           s.permission = [...s.permission, ...body.permission];
-        if (body.title !== undefined) s.title = body.title;
+        if (body?.title !== undefined) s.title = body.title;
         return s;
       },
-      async messages({id}) {
-        return messages.get(id) ?? [];
+      async messages({path}) {
+        return messages.get(path.id) ?? [];
       },
       async create({query, body}) {
         const id = `ses_probe_${sessions.size + 1}`;

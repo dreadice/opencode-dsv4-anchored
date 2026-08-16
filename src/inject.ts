@@ -18,7 +18,7 @@ export function newPartId(): string {
 
 /** 历史 parts 中是否已有注入标记（幂等判定，含 compaction 后重注入判断）。 */
 export function hasInjectionMarker(
-  parts: Array<{type: string; text?: string}>
+  parts: Array<{type: string; text?: unknown}>
 ): boolean {
   return parts.some(
     p =>
