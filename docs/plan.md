@@ -6,11 +6,13 @@
 移植到 opencode，解决 DeepSeek V4 过拟合（模型见完整 system 就抢跑：首轮狂开
 工具、多步并行）。
 
-**一句话方案**：探针捕获真实 system → 首轮 `system=Minimal persona` + 受限工具
-`[bash, str_replace_editor]` + 原 system 注入首条 user 消息 → 信号（边界后
-assistant 消息/工具调用）解锁全量工具 → 判别模型输出特征（`idx(we系)<idx(let系)`，
-N=3）→ `verified`。状态持久化在 session permission 哨兵
-（`pristine→seeded→unsealed→verified`）。
+**一句话方案**：探针捕获真实 system → 锚定轮（`system=Minimal persona` + **0 工具**
+
+- 锚定消息，真实消息推迟 pending）→ 锚定回复落库后 `session.idle` 自动发轮 2
+  （user system + 真实消息）→ 解锁全量工具 → 判别模型输出特征（`idx(we系)<idx(let系)`，
+  N=3）→ `verified`。状态持久化在 session permission 哨兵
+  （`pristine→seeded→unsealed→verified`）。round-10 起默认 zero 形态
+  （whitelist `[]`），假工具（str_replace_editor/假 bash）已移除。
 
 **必读文档（按序，勿重复研究）**：
 
@@ -134,26 +136,26 @@ P0 基础设施 ─▶ P1 L1 纯函数+TDD ─▶ P2 L2 fake client 集成 ─�
 
 ### 1.3 `src/stage.ts` + `test/stage.test.ts`（TC-1-6~16）
 
-- 常量：`STAGE_PERMISSION = "__dsv4_stage__"`、`MINIMAL_WHITELIST =
-["bash","str_replace_editor"]`、`COMPACTION_TOOLS =
+- 常量：`STAGE_PERMISSION = "__dsv4_stage__"`、`COMPACTION_TOOLS =
 ["read","glob","grep","edit","todowrite","question"]`
 - `type Rule = { permission: string; pattern: string; action: "allow"|"deny"|"ask" }`
 - `getStage(ruleset: Rule[]): "pristine"|"seeded"|"unsealed"|"verified"`
   - `ruleset.findLast(r => r.permission === STAGE_PERMISSION)?.pattern ?? "pristine"`
 - `seededRules(whitelist): Rule[]`：
   `[{STAGE,seeded,allow},{*,*,deny},...whitelist.map(permission allow),
- {external_directory,*,allow}]`
+ {external_directory,*,allow}]`（round-10 zero 形态默认 `[]`）
 - `extractSessionDenies(ruleset): Rule[]`：filter `action==="deny"` 且**排除**
   `permission==="*" && pattern==="*"`（插件自身 deny *，防止 promote 时自我覆盖）
 - `unlockRules(agentRuleset, sessionDenies): Rule[]`：
-  `[...agentRuleset, ...sessionDenies, {str_replace_editor,*,deny},
- {STAGE,unsealed,allow}]`
-- `compactionRules(): Rule[]`：`[{STAGE,seeded,allow},{*,*,deny},...MINIMAL_WHITELIST
- allow, ...COMPACTION_TOOLS allow, {external_directory,*,allow}]`
+  `[...agentRuleset, ...sessionDenies, {STAGE,unsealed,allow}]`
+  （round-10：假 str_replace_editor 已移除，无隐藏 deny）
+- `compactionRules(whitelist): Rule[]`：`[{STAGE,seeded,allow},{*,*,deny},
+ ...whitelist allow, ...COMPACTION_TOOLS allow, {external_directory,*,allow}]`
 - 测试：TC-1-6 空→pristine、1-7~9 各哨兵、1-10 findLast 后写覆盖、
-  1-11 无哨兵但有 deny * → pristine；1-12 seeded 规则内容断言（顺序/字段）；
-  1-13 sessionDenies 排除 deny *；1-14 解锁规则顺序（agent→denies→工具 deny→哨兵）；
-  1-15 explore 保留只读；1-16 compaction 规则含 7 工具 + 哨兵 seeded
+  1-11 无哨兵但有 deny * → pristine；1-12 seeded 规则内容断言（顺序/字段，
+  zero 白名单空）；1-13 sessionDenies 排除 deny *；1-14 解锁规则顺序
+  （agent→denies→哨兵）；1-15 explore 保留只读；1-16 compaction 规则含
+  白名单 + compactionTools + 哨兵 seeded
 
 ### 1.4 `src/inject.ts` + `test/inject.test.ts`（TC-1-28~30）
 
@@ -289,23 +291,15 @@ sessionID）→ 该会话 gate 命中（或含插件哨兵）→ 追加 `compact
 日志 compaction.rollback。重注入/重判别由 chat.message 的 ensureState 自然完成
 （无幂等标记即注入；判别窗口重置）。
 
-### 2.7 `src/str-replace-editor.ts`（TC-2-20~23）
+### 2.7 ~~`src/str-replace-editor.ts`~~（round-10 已移除）
 
-- 注册：`tool({ description: DEFAULT_DESCRIPTION, args: z.object({...}),
-execute })`——description/参数**逐字复刻 dsh**（research §4.11）：
-  `command: enum(view/create/str_replace/insert)` 必填 + `path` 必填绝对路径 +
-  `file_text?` / `insert_line?` / `new_str?` / `old_str?` / `view_range?`
-- execute 四命令（绝对路径，不做 LSP/格式化）：
-  - view：读文件（cat -n 行号）或目录（列表）；view_range 行范围；
-    超 16000 字符截断 + `\n<response clipped>` 标记
-  - create：写文件；**已存在报错**
-  - str_replace：old_str 在文件内**唯一匹配** → 替换；多/无匹配报错
-  - insert：在 insert_line 后插入 new_str
-- 返回 `ToolResult`（string 或 `{output}`）
-- 测试：2-20 view（行号/截断）、2-21 create（新文件/已存在报错）、2-22
-  str_replace（唯一替换/多匹配报错）、2-23 insert
+D10 曾计划插件注册 `str_replace_editor`（schema 逐字复刻 dsh）+ 假 bash 描述
+（`tool.definition`）。round-9 实测双工具复现不了 we 锚定（standard-like）、
+0 工具才是唯一实证形态（D13）→ round-10 删除 `src/str-replace-editor.ts` /
+`src/bash-description.ts` 及其测试（TC-2-20~23），插件不注册任何工具。
+移除理由与实现见 design.md §8.2.2、decisions.md D10 修订。
 
-### 2.8 场景矩阵测试（TC-2-1~24）
+### 2.8 场景矩阵测试（TC-2-1~24 + D13 补充）
 
 用 fake client + 直接调用 core/probe/system-transform/compaction 函数：
 
@@ -314,9 +308,13 @@ execute })`——description/参数**逐字复刻 dsh**（research §4.11）：
   2-9 判别 giveup（3 条不符 + 进程去重）、2-10 verified 稳定、
   2-11 bypass、2-12 resume（重启模拟：读 ruleset 续跑）、2-13/2-14 compaction、
   2-15 subagent（parentID）、2-16 门控不命中、2-17~~19 system.transform、
-  2-20~~23 工具、2-24 日志短路
+  2-24 日志短路
+- **round-10 D13 补充（TC-2-25~32，见 testing.md）**：锚定轮替换 parts +
+  pending 推迟、bypass 不推迟、重锚定、session.idle 轮 2 自动发出（防重/
+  失败恢复/无 user system 降级）、ensure 悬挂补发（当前消息正常放行）、
+  sending 防并发、轮 2 后解锁
 
-**验收**：TC-2-1~24 全绿；typecheck 通过。
+**验收**：TC-2-1~32 全绿；typecheck 通过。
 
 ---
 
@@ -335,7 +333,6 @@ execute })`——description/参数**逐字复刻 dsh**（research §4.11）：
   - **`event(input)` → `session.idle` → `sendRound2`**（D13 轮 2 自动发送；
     触发点用 session.idle 而非 message.updated——busy 窗口会丢 runLoop，
     research §4.12；probeSessions 跳过）
-  - `tool = { str_replace_editor }` → 插件工具
   - `config(cfg)`（可选）→ 只读记录，不 mutate
 - 3.3 插件 options（round-10 默认 zero 形态）：`models`（默认
   `["deepseek*v4*"]`）、`whitelist`（**默认 `[]`** 0 工具）、`anchorText`
@@ -368,9 +365,9 @@ this project."` + `reasoningEffort=max`）：
     --model opencode/deepseek-v4-flash-free --variant max --thinking --auto \
     --print-logs "Understand this project and summarize what it does."
   ```
-- 4.3 TC-3-1 首轮：日志 stage=seeded、injectSource=probe、
-  visibleTools=[bash,str_replace_editor]、首条 user 消息含幂等标记
-- 4.4 TC-3-2 判别：`--thinking` 输出首轮 reasoning 块 → 人工按 verifyText
+- 4.3 TC-3-1 首轮：日志 stage=seeded、injectSource=anchor（锚定轮）、
+  真实消息进 pending、parts=纯锚定消息、0 工具
+- 4.4 TC-3-2 判别：锚定回复 `--thinking` 输出 reasoning 块 → 人工按 verifyText
   判据核对（`idx(we系) < idx(let系)`）；插件侧期望 verify.passed 或 giveup
   （flash-free 特征可能缺失 → giveup 也符合预期，记录 thinking 片段）
 - 4.5 TC-3-3 解锁：第二轮日志 unlock；后续可见工具恢复 agent ruleset

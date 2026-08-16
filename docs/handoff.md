@@ -79,13 +79,11 @@ flash-free）、round-9 zero-anchored 时序定案（已落档，**代码未实�
   来源）、debug 完整字段（全文/ruleset 全量）；debug 短路 = 启动时读一次
   `OPENCODE_LOG_LEVEL === "DEBUG"`，`debug()` 开头 return（避免每轮序列化+HTTP）；
   fire-and-forget；`app.log` 机制研究见 research.md §4.10
-- **D10（round-5）**：严格 minimal 工具对——插件注册自定义工具
-  `str_replace_editor`（`Hooks.tool`，名称/描述/参数逐字复刻 dsh 原版 schema，
-  见 research.md §4.11），bash 用内置（id 同名）；seeded 白名单
-  `["bash","str_replace_editor"]`，`deny *` 隐藏内置编辑族；**解锁时**末尾追加
-  `str_replace_editor: deny` 隐藏（"只是system用一下，后边隐藏就行"；
-  与 verified 无关，round-7 澄清）；
-  execute 自实现 view/create/str_replace/insert
+- **D10（round-5，round-10 已移除）**：曾注册插件自定义工具 `str_replace_editor`
+  （schema 逐字复刻 dsh）+ 假 bash 描述（`tool.definition`），seeded 白名单
+  `["bash","str_replace_editor"]`、解锁时 deny 隐藏——round-9 实测双工具复现
+  不了 we 锚定，0 工具才是唯一实证形态 → round-10 移除全部假工具（src 删除、
+  `unlockRules` 回归纯 agent ruleset；详见 design.md §8.2.2）
 - **D11（round-5）**：首轮注入扰动风险备选——首轮 user 消息在場 AGENTS.md/
   技能目录（dsh 首轮剥离，issue #6：技能目录在场 0/9 vs 无 ~81%）；**默认保持
   完整注入**（信息不丢），实测判别不达标才启用**选择性剥离**（按稳定标记切段：
@@ -99,16 +97,18 @@ flash-free）、round-9 zero-anchored 时序定案（已落档，**代码未实�
   **轨迹标记判别**：`reasoning`+`text` 拼接全文 `idx(we系) < idx(let系)` 即通过
   （词表可配置，中文实验词表不稳定 → giveup 不锁死）；
   compaction → 回 seeded（重注入 + 重判别）
-- **D13（round-9，zero-anchored 定案）**：锚定轮（minimal + **0 工具** +
+- **D13（round-9 定案，round-10 实现 + 修订）**：锚定轮（minimal + **0 工具** +
   **只有锚定消息**，真实消息推迟）→ 锚定回复落库（晋升信号）→ event 自动
   prompt 轮 2（**user system 去 persona 在前 + 真实消息在后**）→ 解锁 →
   判别；锚定消息/注入块用 `synthetic: true`（TUI 隐藏、模型可见）；
   pending 存盘（sessionID → parts）+ prompt 防重 + 重启悬挂补发；
-  完整时序见 design.md §4.5，**代码未实现（下阶段任务）**
+  完整时序见 design.md §4.5；**round-10 已实现**（触发点改为 `session.idle`——
+  busy 窗口会丢 runLoop，research §4.12；锚定消息不加 marker——实测首轮任何
+  额外内容破坏 we）
 - **round-9 关键 fix**：`system.transform` 必须 `splice` 原地改 output.system
   （重赋值不生效——plugin.trigger 忽略返回值，request.ts:69-78 用局部数组
-  引用）；`tool.definition` 假 bash（bash 描述 = dsh persistent-bash 原文，
-  execute 不变，`src/bash-description.ts`）；注入时机 = 解锁后（unsealed）
+  引用）；注入时机 = 解锁后（unsealed）——round-10 起 D13 轮 2 由 sendRound2
+  携带 user system，ensure 注入为兜底
 
 ## ★ round-4 突破（2026-08-16，最后定案）：探针捕获真实 system
 
@@ -203,22 +203,20 @@ noReply?, system?, tools?, parts[]}`——**探针可指定与真实会话相同
   不 seeded，行为 = 原生 opencode）；状态文件可展示；**自组装代码不写**。
 - **探针可复用**：同一 (dir,agent,model,date) 只探针一次；跨天重探。
 
-## 待实现的功能（src/index.ts 重写）
+## 已实现的功能（src/，round-10 全部落地）
 
 ### 核心机制（源码已验证）
 
 1. **工具可见性**：session permission ruleset 控制，`findLast` 后写覆盖
    （`.../permission/index.ts:204` `disabled()`）
-   - seeded（D10 严格 minimal 对）：`[{permission:"__dsv4_stage__",
-pattern:"seeded",action:"allow"}, {permission:"*",pattern:"*",action:"deny"},
-{permission:"bash",pattern:"*",action:"allow"}, {permission:"str_replace_editor",
-pattern:"*",action:"allow"}, {permission:"external_directory",pattern:"*",
-action:"allow"}]`
+   - seeded（round-10 zero 形态，白名单默认 `[]`）：
+     `[{permission:"__dsv4_stage__",pattern:"seeded",action:"allow"},
+{permission:"*",pattern:"*",action:"deny"}, ...whitelist.map(allow),
+{permission:"external_directory",pattern:"*",action:"allow"}]`
    - 解锁：`[...agent.permission, ...sessionDenies(排除插件自身 deny *),
-{permission:"str_replace_editor",pattern:"*",action:"deny"}, 哨兵 unsealed]`
-     （D10：末尾 deny 隐藏插件工具，目录恢复自然状态）
+哨兵 unsealed]`（round-10：假 str_replace_editor 已移除，无隐藏 deny）
    - 工具→权限名映射（`:204`）：`edit/write/apply_patch`→`edit`，`read_mcp_*`→`read`
-   - 白名单默认 `["bash","str_replace_editor"]`（D10 严格 minimal 对），可配置
+   - 白名单默认 `[]`（0 工具，D13 zero 形态），可配置
 2. **动态切换**：`client.session.update` merge 追加 + DB 持久化（重启不丢）
    （`.../handlers/session.ts:194-199`；`as any` 传 permission）
 3. **解锁信号**（round-7：**收敛到 chat.message 扫历史，无信号 hook**）：边界后
@@ -236,12 +234,17 @@ action:"allow"}]`
    deny（task/todowrite/primary_tools，`task.ts:143-155`）重排在末 → 不能开
    subagent；`subagent_depth` 默认 1 为第二道防线
 7. **（已弃用）补发消息**：`client.session.prompt` 原为路径 B 的补发机制；D3 统一
-   为一次性注入后不再需要
-8. **注入原 system**：**`chat.message` 原地 prepend text part**（`prompt.ts:999-1047`：
-   落库前触发、`output.parts` 同引用、trigger 返回值丢弃；prepend 的 part 随本消息
-   持久化且进入本次请求，排在真实消息 parts 之前）；注入内容 = **探针捕获的真实
-   system 全量**（round-4 定案），探针失败时**按 key 旁路（D8，无自组装）**。**不要用**
-   `experimental.chat.messages.transform`（input 为 `{}`，无法按会话/模型门控）
+   为一次性注入后不再需要（round-10 起 `session.prompt` 承担轮 2 发送，见 §4.5）
+8. **注入原 system**：D13 轮 2 由 `sendRound2` 携带 user system part
+   （`src/round2.ts`：探针捕获 → 去 persona → synthetic + INJECT_MARKER）；
+   ensure 注入（`stage === "unsealed"` 且历史无标记）为后续消息/resume 兜底。
+   **不要用** `experimental.chat.messages.transform`（input 为 `{}`，无法按会话/
+   模型门控）
+9. **D13 锚定轮（round-10 新增）**：`src/pending.ts`（pending 存盘 + sending
+   防重）+ ensure 锚定流（首轮替换 parts 为纯锚定消息 + 推迟 / 重锚定 / 悬挂
+   补发）+ `event` hook（`session.idle` → `sendRound2`，probeSessions 跳过）；
+   触发点用 session.idle 而非 message.updated（busy 窗口丢 runLoop，
+   research.md §4.12）
 
 ### 阶段判定（无内存状态，靠 DB 持久化的 permission 规则 + 哨兵标记）
 
@@ -268,12 +271,12 @@ action:"allow"}`（任意字符串，不匹配任何真实工具，惰性）；`
   （probe/bypass/none）、可见工具列表、判别状态
 - 用 `client.app.log`（结构化）或 console.log
 
-## 实现顺序建议（round-7 更新，round-10 补 D13 步骤，详见 design.md §11）
+## 实现顺序建议（round-7 更新，round-10 全部落地，详见 design.md §11）
 
 1. 日志模块（两级 + debug 短路 + 事件清单）——其余模块的观测基础
-2. **str_replace_editor 工具注册（D10）**：`Hooks.tool` 注册，schema 逐字复刻
-   dsh（描述/参数/maxOutputChars），execute 自实现 view/create/str_replace/insert
-3. 状态机 + permission 规则（seeded/解锁/判别哨兵 + D10 白名单/隐藏 deny）
+2. ~~str_replace_editor 工具注册（D10）~~：round-10 已移除（双工具实测复现
+   不了 we 锚定；插件不注册工具，design.md §8.2.2）
+3. 状态机 + permission 规则（seeded/解锁/判别哨兵 + 白名单 + compaction 工具集）
    ——`permission/index.ts` `disabled()` 语义为根基
 4. **探针捕获**：create 带自定义 title → prompt（同 agent+model）→ system.transform
    hook 捕获 + throw → delete 探针；缓存 `(dir,agent,modelID,date)`；并发去重；
@@ -282,11 +285,10 @@ action:"allow"}`（任意字符串，不匹配任何真实工具，惰性）；`
    标记）+ **解锁判定（边界后信号）** + **特征判别（N=3 窗口）**
 6. chat.system.transform：探针会话→捕获+throw；真实会话→替换 minimal
 7. compaction 回退（`experimental.session.compacting` hook 触发 → 追加
-   compactionTools + 哨兵 `seeded`；epoch 边界 = 最后一条 `CompactionPart`
-   之后；**回退后自动重注入 + 重新判别**；实现时确认 `compaction.ts:480-608`
-   落库细节影响扫描遍历）、resume re-sync、agent include/exclude 配置
-8. **D13 zero-anchored（round-10 定案，src 待实现）**：`pending.ts`（pending
-   存储：内存 Map + 磁盘 JSON + sending 防重集合）+ `round2.ts`（sendRound2：
+   配置白名单 + compactionTools + 哨兵 `seeded`；epoch 边界 = 最后一条
+   `CompactionPart` 之后；**回退后自动重注入 + 重新判别**）
+8. **D13 zero-anchored（round-10 已实现）**：`pending.ts`（pending 存储：
+   内存 Map + 磁盘 JSON + sending 防重集合）+ `round2.ts`（sendRound2：
    轮 2 prompt = user system part（探针捕获→stripPersona，INJECT_MARKER，
    synthetic）+ pending 真实 parts；显式 agent+model；不带 tools；发送前清
    pending，失败恢复）+ `core.ts` ensure 锚定流（首轮替换 parts + 推迟 /
@@ -296,27 +298,29 @@ action:"allow"}`（任意字符串，不匹配任何真实工具，惰性）；`
 
 ## 已知限制（收敛后，详见 research.md §6）
 
-- **判别效果需实测**（唯一真正待验证项）：str_replace_editor 已逐字复刻 dsh
-  schema（D10），bash 为 opencode 原生（工具名与 dsh minimal 一致），需按 dsh
-  verify 清单复验（首轮 header tools 数量、首行风格、`let me` 计数），插件据此
-  自动判别（N=3 窗口 → verified/giveup）
+- **判别效果需实测**（唯一真正待验证项，round-10 D13 实现后的真机复验）：
+  0 工具锚定轮已实证出 we（官方 v4-pro）；完整链路（锚定轮 we → 自动轮 2 →
+  解锁 → 判别）待真机验证（TC-3-11）
 - 判别特征语言依赖：首行 `We…`、`let me`=0 是英文语料特征，中文回复可能误判
-  未达成 → 只会 giveup（停止判别，warn）不锁死（round-7 确认）
-- 首轮 token 不省（注入 = 原 system 全量；收益在 system 位置最小化，非省 token）
-- seeded 期白名单工具（bash/str_replace_editor）不触发 ask，解锁后按
+  未达成 → 只会 giveup（停止判别，warn）不锁死（round-7 确认；round-10 起
+  锚定消息恒英文，ZH_TERMS 已移除）
+- 首轮 token 不省（锚定轮后轮 2 注入 = 原 system 全量；收益在 system 位置
+  最小化，非省 token）
+- seeded 期白名单工具不触发 ask（默认白名单空 = 0 工具），解锁后按
   agent ruleset 恢复
 - `client.session.get` 的 permission/agent/model 需 `as any`（`directory`/
   `parentID` 已声明可直接用）；
   `client.config.get` 不含内置 agent（用 `client.app.agents()`）；
   `client.session.update` 传 permission 需 `as any`
-- **round-8 已核实**（实现时无需再查）：transform 必带 sessionID
+- **round-8/10 已核实**（实现时无需再查）：transform 必带 sessionID
   （`request.ts:69-73`）；探针 key 用 `session.get().directory`（`Session` 类型
   含 `directory`/`parentID`）；part id 用 `prt_<hex>`（`id/id.ts`），注入 part
   设 `synthetic: true`；`session.messages` 返回 `{info, parts[]}` 含
-  `ReasoningPart`（判别提取 reasoning+text）；eslint 配置在（旧骨架 6 个
-  unused 错误待重写消除）
+  `ReasoningPart`（判别提取 reasoning+text）；`session.idle` 触发轮 2 的 busy
+  依据（research.md §4.12）
 - `client.session.prompt` 带 `tools` 会整体替换 session.permission（严禁在解锁
-  场景携带；探针也不要带 tools）
+  场景携带；探针/轮 2 都不带 tools）；轮 2 必须显式传 agent+model（省略用默认
+  agent，prompt.ts:637-641）
 - 规则只增不减（append-only）：无热加载前提下无感知；compaction 回退靠追加
   新 deny * + 新哨兵 `seeded` 覆盖（round-7）
 - compaction 无 `session.compacted` 事件：触发走 `experimental.session.compacting`
@@ -325,8 +329,9 @@ action:"allow"}`（任意字符串，不匹配任何真实工具，惰性）；`
 - giveup 去重为进程内 Map：重启后可能重复打一次 `verify.giveup` warn（无害）
 - 探针冷启动：首个会话等一次探针（本地组装+throw，几十 ms 级，无模型调用）
 - 探针失败：按 key 旁路（原生行为，TTL 后恢复），**无自组装兜底**（D8）
-- 首轮注入扰动（D11）：首轮 user 消息在場 AGENTS.md/技能目录（dsh 首轮剥离、
-  issue #6 实测扰动）——验证项，不达标启用选择性剥离备选
+- 首轮注入扰动（D11）：锚定轮真实消息推迟（pending），扰动面已最小化；轮 2
+  注入仍含 AGENTS.md/技能目录（dsh 剥离、issue #6 实测扰动）——验证项，不达标
+  启用选择性剥离备选
 - 日志：`app.log` 无 trace 级、默认只落盘、服务端按 `OPENCODE_LOG_LEVEL` 过滤
   （默认 INFO）→ debug 内容必须插件侧短路（D9，research.md §4.10）
 - 未实测：config hook mutate cfg.agent 时序（D1 已绕开，用全局 hook）
@@ -339,17 +344,17 @@ action:"allow"}`（任意字符串，不匹配任何真实工具，惰性）；`
 - package.json 的 exports `./server` → `./dist/index.js`；engines.opencode `>=1.18.18`
 - 插件 API 类型在 `@opencode-ai/plugin`：`Plugin`、`Hooks`、`PluginOptions`；
   Model v2 类型在 `@opencode-ai/sdk/v2`（`Model` 需 `limit/status/options/headers/release_date`）
-- git identity 已配置（dreadice/dreadice@hotmail.com）；HEAD `be6fd56`
-  （chore: 添加 skill），此前 `b7236f6`（init skeleton）
-- **`src/index.ts` 现为旧骨架**：provider hook 注册 `deepseek-v4-flash-free` 模型
-  （Model v2 完整定义），**需保留 provider 注册**，其余重写为 Dsv4Anchored 逻辑
+- git identity 已配置（dreadice/dreadice@hotmail.com）
+- **`src/index.ts` 已重写为 Dsv4Anchored 完整逻辑**（round-10）：chat.message
+  ensure + system.transform + compacting + event（session.idle → 轮 2）；
+  provider hook 不注册（opencode 内置 `opencode/deepseek-v4-flash-free`，
+  旧骨架的注册在 ad9d889 已随重写移除，round-9 真机已验证可用）
 
 ## 当前 git 状态
 
-- 已提交：init skeleton（b7236f6）、chore 添加 skill（be6fd56）
-- 未提交：`docs/` 全部（research.md、decisions.md、design.md、handoff.md）——
-  含 round-4/5/6 全部定案（探针、失败旁路、日志、D10 工具对、D11 备选、D5
-  compaction 修订含重注入、README 偏差核对），应随实现一起提交
+- 全部实现与 docs 已提交（HEAD `dc378d7`）：docs round-10 落档、假工具移除、
+  D13 实现、prettier 重排
+- 剩余：D13 真机验证（TC-3-11，待用户跑 opencode）与测试结果回填
 
 ## Suggested skills
 

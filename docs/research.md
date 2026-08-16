@@ -394,6 +394,9 @@ str_replace = 唯一匹配替换（多匹配/无匹配报错）；insert = 按�
 **解锁时隐藏**：解锁规则末尾追加 `{permission:"str_replace_editor",
 pattern:"*", action:"deny"}`（findLast 命中）→ 目录恢复 opencode 自然状态；
 插件工具仅 seeded 期使用（用户："只是system用一下，后边隐藏就行"）。
+**round-10 修订：整节废弃**——round-9 实测双工具复现不了 we 锚定，0 工具才是
+唯一实证形态（D13）；`str_replace_editor` 注册与假 bash 描述已移除
+（design.md §8.2.2 / decisions.md D10 修订），本节仅作历史研究记录。
 
 ### 4.12 D13 轮 2 自动发送的源码事实（round-10 研究，实现依据）
 
@@ -490,25 +493,25 @@ resolvePart → `plugin.trigger("chat.message")` → `updateMessage(info)` +
 
 ### 5.2 规则设计
 
-seeded 规则（`client.session.update` merge，**D10 修订：严格 minimal 工具对**）：
+seeded 规则（`client.session.update` merge，**round-10：zero 形态默认白名单
+`[]`**）：
 
 ```ts
 [
   {permission: '__dsv4_stage__', pattern: 'seeded', action: 'allow'}, // 阶段哨兵
   {permission: '*', pattern: '*', action: 'deny'}, // 隐藏全部
-  {permission: 'bash', pattern: '*', action: 'allow'}, // 白名单：bash（内置，id 同名）
-  {permission: 'str_replace_editor', pattern: '*', action: 'allow'}, // 插件注册工具（§4.11，D10）
+  ...whitelist.map(p => ({permission: p, pattern: '*', action: 'allow'})), // 可配置白名单（zero 形态 = 0 工具）
   {permission: 'external_directory', pattern: '*', action: 'allow'},
 ];
 ```
 
-解锁（merge 追加，**D6/D7 round-3 修订：不用 allow \*；round-7 改名**）：
+解锁（merge 追加，**D6/D7 round-3 修订：不用 allow \*；round-7 改名；
+round-10：假 str_replace_editor 已移除，无隐藏 deny**）：
 
 ```ts
 [
   ...agent.permission,
   ...sessionDenies,
-  {permission: 'str_replace_editor', pattern: '*', action: 'deny'}, // D10：隐藏插件工具
   {permission: '__dsv4_stage__', pattern: 'unsealed', action: 'allow'},
 ];
 // agent ruleset（client.app.agents() 取）在前；sessionDenies = session.permission 中
@@ -536,11 +539,9 @@ question/plan_enter:"deny", external_directory:"ask"+白名单allow, read env
   统一映射到 `edit`，`read_mcp_*` 映射到 `read`，其余用工具 id。
 - `bash` 执行外部目录时另 ask `external_directory`（`tool/shell.ts:270-284`），
   seeded 期间需 allow 白名单内工具的 external_directory，否则被 `deny *` 阻断。
-- 默认白名单 `["bash", "str_replace_editor"]`（**D10**）：严格复刻 dsh minimal
-  工具对——`bash` 用 opencode 内置（id 同名），`str_replace_editor` 为插件注册
-  自定义工具（§4.11），名称/描述/参数与 dsh 逐字一致；首轮模型可见工具 =
-  `[bash, str_replace_editor]` 两个（`deny *` 已隐藏内置 edit/write/apply_patch，
-  无需额外 deny）。
+- **默认白名单 `[]`（round-10 zero 形态）**：0 工具锚定轮——round-9 实测 0 工具
+  才是唯一实证出 we 形态的配置（§2.2/D13）；`deny *` 隐藏全部内置工具。
+  旧 D10 双工具（`["bash","str_replace_editor"]`）已移除（design.md §8.2.2）。
 
 ### 5.3 Hook 职责
 
@@ -549,7 +550,8 @@ question/plan_enter:"deny", external_directory:"ask"+白名单allow, read env
 | `config(cfg)`                        | （可选）注入/补全 agent 定义：Minimal persona + 初始 permission；记录用户配置                                                                                                                                                                                                                                                                                               |
 | `chat.message`                       | 统一状态机入口（**round-7：解锁/判别收敛到此，无需信号 hook**）：await `session.get` 判定状态（含 `parentID` 判 subagent）→ pristine 则注入 + seeded；seeded/unsealed 则扫边界后信号 → 解锁（追加 agent ruleset + 哨兵 unsealed）、判特征（N=3，任一符合 → 哨兵 verified，全不符 → giveup）；注入判定"历史无幂等标记即注入"（含 compaction 重注入）；探针失败 → 按 key 旁路 |
 | `experimental.chat.system.transform` | 门控命中时把 `output.system` 整体替换为**纯 Minimal persona**（所有 agent 无差别；原 system 全部内容已作为 user part prepend 注入首轮）；探针会话 → 捕获 + throw                                                                                                                                                                                                            |
-| `experimental.session.compacting`    | 回退：追加 `deny *` + minimal 对 + compactionTools + 哨兵 seeded（重注入 + 重判别由 chat.message 自然完成）                                                                                                                                                                                                                                                                 |
+| `experimental.session.compacting`    | 回退：追加 `deny *` + 配置白名单 + compactionTools + 哨兵 seeded（重注入 + 重判别由 chat.message 自然完成）                                                                                                                                                                                                                                                                 |
+| `event`（`session.idle`）            | **round-10 D13**：run 结束后触发轮 2（`sendRound2`：pending 真实消息 + user system，发前清 pending 防重；research §4.12）                                                                                                                                                                                                                                                   |
 | `event`（`session.created`）         | （可选，识别 subagent 的辅助路径；推荐直接 `session.get` 查 parentID）                                                                                                                                                                                                                                                                                                      |
 
 > round-7：`tool.execute.before` / `message.updated` 不再承担信号职责——信号
@@ -598,22 +600,21 @@ agent ruleset（`client.app.agents()` 取）+ session deny；提供 include/excl
 
 剩余项：
 
-1. **判别效果需实测（唯一真正的待验证项）**：dsh 的 5/5 结论基于 Harness 的
-   工具 schema；D10 已把 `str_replace_editor` 逐字复刻（名字/描述/参数），
-   `bash` 为 opencode 原生（工具名与 dsh minimal 一致，description 不同），
-   首轮集合 = `[bash, str_replace_editor]` 与 dsh minimal 对一致，仍需按 dsh verify
-   清单复验（首轮 header tools 数量、首行风格、`let me` 计数），插件据此自动
-   判别（N=3 窗口 → verified/giveup）。**附带扰动项（D11）**：首轮 user 消息
-   在場 AGENTS.md/技能目录（dsh 首轮剥离），实测不达标时启用选择性剥离升级
-   路径。
+1. **判别效果需实测（唯一真正的待验证项）**：round-9 实测确认 0 工具锚定轮
+   是唯一实证出 we 形态的配置（minimal + 0 工具 → we；双工具 → standard-like），
+   round-10 已按此实现（D13 时序 + 默认 `whitelist: []`）；仍需真机复验完整
+   链路（锚定轮 we → 自动轮 2 → 解锁 → 判别），插件据此自动判别（N=3 窗口
+   → verified/giveup）。**附带扰动项（D11）**：首轮 user 消息在場 AGENTS.md/
+   技能目录（dsh 首轮剥离），实测不达标时启用选择性剥离升级路径。
 2. **判别标记的语言依赖**：`idx(we系) < idx(let系)` 是 dsh 英文语料特征
    （思维起步取向）；中文词表曾为实验项（`我们` vs `让我`/`我来`/`我先`）——
    round-9 起 zero 方案锚定回复恒英文（锚定消息固定英文），**中文词表已移除**
    （round-10，`ZH_TERMS` 删除；判别对象 = 锚定轮/真实任务的英文回复）。
 3. **首轮 token 不省**：注入 = 原 system 全部内容 → 首轮上下文体积与原来相当
    （收益在 system 位置内容最小化，非省 token）。用户已接受。
-4. **seeded 期白名单工具不触发 ask**（行为说明，非缺陷）：首轮内 bash/
-   str_replace_editor 直接执行不询问；解锁后按 agent ruleset 恢复 ask。
+4. **seeded 期白名单工具不触发 ask**（行为说明，非缺陷）：zero 形态下白名单
+   默认空（0 工具），显式配置白名单时其工具直接执行不询问；解锁后按 agent
+   ruleset 恢复 ask。
 5. **`client.session.get` SDK 类型缺口**：wire 返回含 `permission/agent/model/
 parentID`，但 SDK 类型未声明，需 `as any`（技术债，无用户感知）。
 6. **规则只增不减（append-only）**：seeded/解锁/compaction 回退均追加；
@@ -627,8 +628,7 @@ parentID`，但 SDK 类型未声明，需 `as any`（技术债，无用户感知
 ## 7. 实现建议顺序（round-7 更新）
 
 1. 日志模块（两级 + debug 短路 + 事件清单，§4.10）——其余模块的观测基础
-2. `str_replace_editor` 工具注册（D10：`Hooks.tool`，schema 逐字复刻 dsh，
-   execute 自实现 view/create/str_replace/insert）
+2. ~~`str_replace_editor` 工具注册~~（round-10 已移除，design.md §8.2.2）
 3. 核心状态机 + permission 规则（§5.1–5.3，seeded/解锁/判别哨兵）
 4. 探针捕获（§4.9：create 带 title → prompt 同 agent+model → transform 捕获 +
    throw → delete；缓存 key/并发去重/磁盘持久化/failed TTL/旁路）
@@ -637,7 +637,10 @@ parentID`，但 SDK 类型未声明，需 `as any`（技术债，无用户感知
 6. system transform（探针捕获 + 真实会话替换 minimal）
 7. compaction 回退（`experimental.session.compacting` → 回 seeded）、resume
    re-sync、自定义 agent include/exclude
-8. 按 §6-1 的清单编写验证脚本
+8. **D13 zero-anchored（round-10 已实现）**：`pending.ts`（推迟存储）+
+   `round2.ts`（sendRound2，§4.12）+ ensure 锚定流（替换 parts/重锚定/悬挂
+   补发）+ `event` hook（`session.idle` → 轮 2）+ 默认 zero 配置
+9. 按 §6-1 的清单编写验证脚本
 
 ## 参考文件索引
 

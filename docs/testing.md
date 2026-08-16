@@ -8,11 +8,11 @@ deepseek-v4-flash-free`）。
 
 ## 1. 分层与工具
 
-| 层  | 工具                      | mock          | 覆盖                                                                                                     |
-| --- | ------------------------- | ------------- | -------------------------------------------------------------------------------------------------------- |
-| L1  | `bun test`（零依赖）      | 无            | 门控/阶段/规则构造/判别/幂等/epoch 边界/key                                                              |
-| L2  | `bun test` + fake client  | 内存 fake SDK | chat.message ensure 状态机矩阵、探针、system.transform、compaction、subagent、str_replace_editor execute |
-| L3  | `opencode run` + 真实 API | 无            | 锚定效果、判别达成、解锁、日志事件链、状态文件、resume、compaction、旁路                                 |
+| 层  | 工具                      | mock          | 覆盖                                                                                                           |
+| --- | ------------------------- | ------------- | -------------------------------------------------------------------------------------------------------------- |
+| L1  | `bun test`（零依赖）      | 无            | 门控/阶段/规则构造/判别/幂等/epoch 边界/key                                                                    |
+| L2  | `bun test` + fake client  | 内存 fake SDK | chat.message ensure 状态机矩阵、探针、system.transform、compaction、subagent、D13 锚定轮/轮 2（round-10 新增） |
+| L3  | `opencode run` + 真实 API | 无            | 锚定效果、判别达成、解锁、日志事件链、状态文件、resume、compaction、旁路                                       |
 
 架构要求（可测性）：hook 主体为**可注入 client 的纯函数**（如
 `ensureState(client, sessionID, opts)`），`src/index.ts` 的 hook 只是薄包装。
@@ -66,13 +66,13 @@ resume：`opencode run -s <sessionID> "继续"`；门控对照：`--model anthro
 
 ### 3.3 规则构造
 
-| 用例    | 函数                                       | 输入                            | 期望                                                                                                             |
-| ------- | ------------------------------------------ | ------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| TC-1-12 | `seededRules(whitelist)`                   | `["bash","str_replace_editor"]` | 尾哨兵 `seeded`；含 `*:deny`；含 bash/str_replace_editor allow；含 external_directory allow                      |
-| TC-1-13 | `extractSessionDenies(ruleset)`            | 混合规则                        | 只返回 `action==="deny"`；**排除** pattern==="\*" 的插件 deny \*                                                 |
-| TC-1-14 | `unlockRules(agentRuleset, sessionDenies)` | build ruleset + denies          | 顺序 = agent.permission → sessionDenies → `str_replace_editor:deny` → 哨兵 `unsealed`                            |
-| TC-1-15 | `unlockRules`（explore）                   | explore `*:deny` ruleset        | 保留只读白名单；哨兵 unsealed 在尾                                                                               |
-| TC-1-16 | `compactionRules()`                        | —                               | `*:deny` + bash/str_replace_editor + read/glob/grep/edit/todowrite/question + external_directory + 哨兵 `seeded` |
+| 用例    | 函数                                       | 输入                       | 期望                                                                                                                   |
+| ------- | ------------------------------------------ | -------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| TC-1-12 | `seededRules(whitelist)`                   | `[]`（round-10 zero 默认） | 尾哨兵 `seeded`；含 `*:deny`；含 external_directory allow；白名单空则无 allow 规则                                     |
+| TC-1-13 | `extractSessionDenies(ruleset)`            | 混合规则                   | 只返回 `action==="deny"`；**排除** pattern==="\*" 的插件 deny \*                                                       |
+| TC-1-14 | `unlockRules(agentRuleset, sessionDenies)` | build ruleset + denies     | 顺序 = agent.permission → sessionDenies → 哨兵 `unsealed`（round-10：假 str_replace_editor 已移除，无隐藏 deny）       |
+| TC-1-15 | `unlockRules`（explore）                   | explore `*:deny` ruleset   | 保留只读白名单；哨兵 unsealed 在尾                                                                                     |
+| TC-1-16 | `compactionRules(whitelist)`               | `[]`                       | `*:deny` + 配置白名单 + read/glob/grep/edit/todowrite/question + external_directory + 哨兵 `seeded`（round-10 参数化） |
 
 ### 3.4 轨迹标记判别 `verifyText(text, terms)`
 
@@ -167,40 +167,37 @@ const messages = [
 
 ### 4.2 场景矩阵
 
-| 用例    | 场景                           | 步骤                                                    | 期望                                                                                                                                           |
-| ------- | ------------------------------ | ------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
-| TC-2-1  | pristine 首轮                  | 首次 `chat.message`（probe 缓存命中）                   | parts 前 prepend 注入 part；permission = seeded 规则；日志 inject                                                                              |
-| TC-2-2  | 探针成功                       | 缓存 miss → 探针                                        | `session.create(title)` → `prompt(agent+model,无tools)` → transform 捕获+throw → delete；缓存写入                                              |
-| TC-2-3  | 探针失败旁路                   | prompt reject                                           | key 标 failed+TTL；本次与 TTL 内后续会话全旁路（不注入/seeded/替换）                                                                           |
-| TC-2-4  | 探针并发去重                   | 两个首轮同时 miss                                       | 只跑一次探针                                                                                                                                   |
-| TC-2-5  | 注入幂等                       | 第二次 `chat.message`（seeded）                         | 不再注入                                                                                                                                       |
-| TC-2-6  | 解锁                           | seeded + 历史含 assistant 消息                          | 追加 unlock 规则（agent ruleset+denies+str_replace_editor deny+哨兵 unsealed）；日志 unlock                                                    |
-| TC-2-7  | 解锁幂等                       | unsealed 再跑                                           | 不重复追加                                                                                                                                     |
-| TC-2-8  | 判别通过                       | unsealed + 历史首条 reasoning 含 `We need`              | 追加哨兵 verified；日志 verify.passed；后续不再判                                                                                              |
-| TC-2-9  | 判别 giveup                    | 边界后 3 条 assistant 消息均不通过（含 let 先、无标记） | `verify.giveup` warn 一次（进程内去重）；保留 unsealed；不再判                                                                                 |
-| TC-2-10 | verified 稳定                  | verified 再跑                                           | 无解锁/判别动作                                                                                                                                |
-| TC-2-11 | bypass 稳定                    | key failed 期间                                         | 所有 hook 原样放行                                                                                                                             |
-| TC-2-12 | resume（重启模拟）             | 新进程读 ruleset=seeded、历史有信号                     | 解锁 + 判别续跑                                                                                                                                |
-| TC-2-13 | compaction 回退                | `experimental.session.compacting`                       | 追加 compaction 规则 + 哨兵 seeded；重注入（无幂等标记）                                                                                       |
-| TC-2-14 | compaction 重判别              | 回退后历史含 CompactionPart，边界后新回复 we 风格       | verified                                                                                                                                       |
-| TC-2-15 | subagent                       | session.parentID 存在                                   | 独立按同流程处理                                                                                                                               |
-| TC-2-16 | 门控不命中                     | model 非 deepseek\*v4\*                                 | 全部旁路（原生）                                                                                                                               |
-| TC-2-17 | system.transform（真实会话）   | 门控命中                                                | output.system = `[Minimal persona]`                                                                                                            |
-| TC-2-18 | system.transform（探针会话）   | sessionID ∈ probeSessions                               | 捕获 system 全文 → throw（非 retry 禁词）                                                                                                      |
-| TC-2-19 | system.transform（bypass）     | key failed                                              | 原样放行                                                                                                                                       |
-| TC-2-20 | str_replace_editor view        | 读文件                                                  | 行号 cat -n 格式；16000 截断 + `<response clipped>`                                                                                            |
-| TC-2-21 | str_replace_editor create      | 写新文件                                                | 成功；已存在 → 报错                                                                                                                            |
-| TC-2-22 | str_replace_editor str_replace | 唯一匹配                                                | 替换成功；多/无匹配 → 报错                                                                                                                     |
-| TC-2-23 | str_replace_editor insert      | 行插入                                                  | 成功                                                                                                                                           |
-| TC-2-24 | 日志分级                       | debug 关                                                | `debug()` 短路，无序列化/HTTP                                                                                                                  |
-| TC-2-25 | 锚定轮（D13 首轮）             | anchorText 配置 + pristine + probe 缓存命中             | parts **替换**为纯锚定消息（synthetic、无 marker）；真实 parts 进 pending（存盘）；permission = seeded（whitelist []）                         |
-| TC-2-26 | 锚定轮 bypass 不推迟           | 探针失败                                                | 不替换 parts、不存 pending；真实消息原样                                                                                                       |
-| TC-2-27 | 重锚定                         | pending 存在 + 边界后无 assistant（锚定中断）           | 当前 parts 追加 pending；parts 替换为锚定消息（重试）                                                                                          |
-| TC-2-28 | event idle → 轮 2              | pending 存在 + `session.idle`                           | `session.prompt` 发出：parts = [user system（INJECT_MARKER、synthetic）+ pending 真实 parts]、显式 agent+model、无 tools；pending 已清（防重） |
-| TC-2-29 | 轮 2 prompt 失败恢复           | prompt reject                                           | `round2.fail` warn；pending 恢复（ensure 补发兜底）                                                                                            |
-| TC-2-30 | ensure 悬挂补发                | pending 存在 + 边界后已有 assistant + 用户新消息        | 补发轮 2；当前消息**正常放行**（不推迟、不 placeholder）                                                                                       |
-| TC-2-31 | idle 防重/无 pending           | idle 但 pending 已清 / 探针会话 idle                    | 不发 prompt（sending 防并发 + pending 判定 + probeSessions 跳过）                                                                              |
-| TC-2-32 | 轮 2 后解锁                    | 轮 2 消息入库（fake prompt 持久化）→ ensure             | stage=seeded + assistant 信号 → unlock；判别窗口含锚定回复                                                                                     |
+| 用例          | 场景                          | 步骤                                                    | 期望                                                                                                                                           |
+| ------------- | ----------------------------- | ------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| TC-2-1        | pristine 首轮                 | 首次 `chat.message`（probe 缓存命中）                   | parts 前 prepend 注入 part；permission = seeded 规则；日志 inject                                                                              |
+| TC-2-2        | 探针成功                      | 缓存 miss → 探针                                        | `session.create(title)` → `prompt(agent+model,无tools)` → transform 捕获+throw → delete；缓存写入                                              |
+| TC-2-3        | 探针失败旁路                  | prompt reject                                           | key 标 failed+TTL；本次与 TTL 内后续会话全旁路（不注入/seeded/替换）                                                                           |
+| TC-2-4        | 探针并发去重                  | 两个首轮同时 miss                                       | 只跑一次探针                                                                                                                                   |
+| TC-2-5        | 注入幂等                      | 第二次 `chat.message`（seeded）                         | 不再注入                                                                                                                                       |
+| TC-2-6        | 解锁                          | seeded + 历史含 assistant 消息                          | 追加 unlock 规则（agent ruleset+denies+哨兵 unsealed，round-10 无工具 deny）；日志 unlock                                                      |
+| TC-2-7        | 解锁幂等                      | unsealed 再跑                                           | 不重复追加                                                                                                                                     |
+| TC-2-8        | 判别通过                      | unsealed + 历史首条 reasoning 含 `We need`              | 追加哨兵 verified；日志 verify.passed；后续不再判                                                                                              |
+| TC-2-9        | 判别 giveup                   | 边界后 3 条 assistant 消息均不通过（含 let 先、无标记） | `verify.giveup` warn 一次（进程内去重）；保留 unsealed；不再判                                                                                 |
+| TC-2-10       | verified 稳定                 | verified 再跑                                           | 无解锁/判别动作                                                                                                                                |
+| TC-2-11       | bypass 稳定                   | key failed 期间                                         | 所有 hook 原样放行                                                                                                                             |
+| TC-2-12       | resume（重启模拟）            | 新进程读 ruleset=seeded、历史有信号                     | 解锁 + 判别续跑                                                                                                                                |
+| TC-2-13       | compaction 回退               | `experimental.session.compacting`                       | 追加 compaction 规则 + 哨兵 seeded；重注入（无幂等标记）                                                                                       |
+| TC-2-14       | compaction 重判别             | 回退后历史含 CompactionPart，边界后新回复 we 风格       | verified                                                                                                                                       |
+| TC-2-15       | subagent                      | session.parentID 存在                                   | 独立按同流程处理                                                                                                                               |
+| TC-2-16       | 门控不命中                    | model 非 deepseek\*v4\*                                 | 全部旁路（原生）                                                                                                                               |
+| TC-2-17       | system.transform（真实会话）  | 门控命中                                                | output.system = `[Minimal persona]`                                                                                                            |
+| TC-2-18       | system.transform（探针会话）  | sessionID ∈ probeSessions                               | 捕获 system 全文 → throw（非 retry 禁词）                                                                                                      |
+| TC-2-19       | system.transform（bypass）    | key failed                                              | 原样放行                                                                                                                                       |
+| ~~TC-2-20~~23 | ~~str_replace_editor 4 命令~~ | ~~已移除~~（round-10：假工具删除，D10 修订）            | —                                                                                                                                              |
+| TC-2-24       | 日志分级                      | debug 关                                                | `debug()` 短路，无序列化/HTTP                                                                                                                  |
+| TC-2-25       | 锚定轮（D13 首轮）            | anchorText 配置 + pristine + probe 缓存命中             | parts **替换**为纯锚定消息（synthetic、无 marker）；真实 parts 进 pending（存盘）；permission = seeded（whitelist []）                         |
+| TC-2-26       | 锚定轮 bypass 不推迟          | 探针失败                                                | 不替换 parts、不存 pending；真实消息原样                                                                                                       |
+| TC-2-27       | 重锚定                        | pending 存在 + 边界后无 assistant（锚定中断）           | 当前 parts 追加 pending；parts 替换为锚定消息（重试）                                                                                          |
+| TC-2-28       | event idle → 轮 2             | pending 存在 + `session.idle`                           | `session.prompt` 发出：parts = [user system（INJECT_MARKER、synthetic）+ pending 真实 parts]、显式 agent+model、无 tools；pending 已清（防重） |
+| TC-2-29       | 轮 2 prompt 失败恢复          | prompt reject                                           | `round2.fail` warn；pending 恢复（ensure 补发兜底）                                                                                            |
+| TC-2-30       | ensure 悬挂补发               | pending 存在 + 边界后已有 assistant + 用户新消息        | 补发轮 2；当前消息**正常放行**（不推迟、不 placeholder）                                                                                       |
+| TC-2-31       | idle 防重/无 pending          | idle 但 pending 已清 / 探针会话 idle                    | 不发 prompt（sending 防并发 + pending 判定 + probeSessions 跳过）                                                                              |
+| TC-2-32       | 轮 2 后解锁                   | 轮 2 消息入库（fake prompt 持久化）→ ensure             | stage=seeded + assistant 信号 → unlock；判别窗口含锚定回复                                                                                     |
 
 ## 5. L3 真机集成测试（opencode run + opencode/deepseek-v4-flash-free）
 
@@ -229,11 +226,11 @@ const messages = [
 
 | 用例    | 名称                      | 命令/步骤                                                                                                                               | 期望                                                                                                                                                                 | 实测                                                                |
 | ------- | ------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
-| TC-3-1  | 首轮锚定目录              | `opencode run --model opencode/deepseek-v4-flash-free --variant max --print-logs "Understand this project and summarize what it does."` | 日志 `chat.message`：stage=seeded、injectSource=probe、visibleTools=[bash,str_replace_editor]；首条 user 消息含幂等标记                                              | ✅ stage=seeded、injectSource=probe、注入幂等标记                   |
+| TC-3-1  | 首轮锚定目录              | `opencode run --model opencode/deepseek-v4-flash-free --variant max --print-logs "Understand this project and summarize what it does."` | 日志 `chat.message`：stage=seeded、injectSource=probe、visibleTools=[bash,str_replace_editor]；首条 user 消息含幂等标记                                              | ✅（D13 前双工具形态实测；round-10 起 zero 形态，重验走 TC-3-11）   |
 | TC-3-2  | 判别达成                  | 同上 `--thinking`                                                                                                                       | 首轮 reasoning 块按 verifyText 判据核对（we 先于 let）；插件日志 verify.passed（或 giveup 如实记录）                                                                 | ✅ 判别 giveup（standard-like thinking；warn 一次不锁死，符合预期） |
 | TC-3-3  | 解锁                      | 同一会话第二轮（`-c` 继续）                                                                                                             | 日志 `unlock`；后续请求可见完整 agent ruleset 工具                                                                                                                   | ✅ `unlock` 日志 + bash 权限恢复                                    |
 | TC-3-4  | 状态文件                  | cat probe-cache.json                                                                                                                    | 含 `{key, status:"ok"/"failed", ts}`                                                                                                                                 | ✅ 落盘含完整 system（按天清理防堆积）                              |
-| TC-3-5  | 真实任务                  | `--auto "Create a file in this project and read it."`                                                                                   | bash/str_replace_editor 首轮可用；解锁后编辑工具可用                                                                                                                 | ✅ 首轮 str_replace_editor create+view 成功                         |
+| TC-3-5  | 真实任务                  | `--auto "Create a file in this project and read it."`                                                                                   | bash/str_replace_editor 首轮可用；解锁后编辑工具可用                                                                                                                 | ✅（D13 前双工具形态实测；zero 形态下首轮 0 工具，重验走 TC-3-11）  |
 | TC-3-6  | resume                    | `-c` 继续（英文 prompt）                                                                                                                | 状态从 ruleset 恢复；已 verified 不重复注入/判别                                                                                                                     | ✅ `-c` 恢复 seeded→unsealed，不重复注入                            |
 | TC-3-7  | compaction                | 长对话触发压缩                                                                                                                          | `compaction.rollback` warn；回 seeded；重注入；重新判别                                                                                                              | ⏳ 待验证（flash-free 128K 长对话才触发）                           |
 | TC-3-8  | 探针失败旁路              | 模拟（如临时断 key/超时）                                                                                                               | `bypass` warn；system 原生、工具全量                                                                                                                                 | ⏳ 待验证（需模拟网络失败）                                         |

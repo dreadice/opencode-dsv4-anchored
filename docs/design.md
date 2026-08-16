@@ -35,9 +35,10 @@
 
 - **锚定轮**：system 只有一行 persona；**0 工具**（对齐 dsh zero-anchored，
   实测 v4-pro + minimal + 0 工具 → we 风格首答 ✓）；真实消息推迟（§4.5）。
-- **解锁后（轮 2）**：工具按 agent ruleset 全量恢复（str_replace_editor 被
-  追加 deny 隐藏，§8.2.2）；注入去 persona 的原始 system（信息不丢：
-  行为要求/env/AGENTS/技能/MCP 保留）；system 仍保持 minimal。
+- **解锁后（轮 2）**：工具按 agent ruleset 全量恢复（round-10：假
+  str_replace_editor 已移除，无隐藏 deny，§8.2.2）；注入去 persona 的原始
+  system（信息不丢：行为要求/env/AGENTS/技能/MCP 保留）；system 仍保持
+  minimal。
 - **verified（判别通过）**：模型输出特征达成（we 系先于 let 系）的成功标记
   （哨兵持久化）；未达成 N=3 轮 → giveup（warn 一次，不锁死）。
 - **旁路（探针失败）**：不替换、不锚定、不注入、不 seeded，会话完全原生。
@@ -201,13 +202,12 @@ action:"allow"}`（不匹配任何真实工具，惰性；`findLast` 取阶段�
  ...whitelist.map(allow), {permission:"external_directory",pattern:"*",action:"allow"}]`
   （白名单可配置，zero 形态默认 `[]`；`deny *` 已隐藏全部内置工具——
   `disabled()` 只在 `pattern==="*" && action==="deny"` 时隐藏工具）。
-- 解锁（原 promote；D2/D6/D7 修订 + D10）：
-  `[...agent.permission, ...sessionDenies(排除插件自身 deny *),
- {permission:"str_replace_editor",pattern:"*",action:"deny"}, 哨兵 unsealed]`
+- 解锁（原 promote；D2/D6/D7 修订；round-10：假 str_replace_editor 已移除，
+  无隐藏 deny）：
+  `[...agent.permission, ...sessionDenies(排除插件自身 deny *), 哨兵 unsealed]`
   ——merge 追加语义（`session.update` append-only），build 的 `*: allow` 等价
   全量开放；explore/自定义 agent 的 ask/deny 保留；subagent 的 task deny 保住；
-  **末尾追加 `str_replace_editor: deny` 隐藏插件工具**（findLast 命中），目录
-  恢复 opencode 自然状态（插件工具仅首轮使用，§8.2.2）。
+  目录恢复 opencode 自然状态（插件不注册任何工具，§8.2.2）。
 - **特征判别（验证，N=3 常量）**：seeded/unsealed 阶段每轮 `chat.message`
   扫描**边界后** assistant 消息（从最早起）：**任一**消息符合**轨迹标记判别**
   （见下）→ 追加哨兵 `verified`（成功标记，持久）并**立即停止判别**（第一轮
@@ -342,35 +342,30 @@ logError`（`handlers/control.ts:28-39`）；级别仅 debug/info/warn/error，
 白名单按 **permission 名**配置（源码 `permission/index.ts:204-213`
 `disabled()`）：
 
-| permission 名        | 覆盖工具                                                                         | 说明                                  |
-| -------------------- | -------------------------------------------------------------------------------- | ------------------------------------- |
-| `bash`               | `bash`                                                                           | opencode 内置，id 与 dsh minimal 同名 |
-| `str_replace_editor` | `str_replace_editor`                                                             | 插件注册的自定义工具（§8.2.2）        |
-| `edit`               | `edit`、`write`、`apply_patch`                                                   | 内置编辑族（seeded 期默认**不放行**） |
-| `read`               | `read`、`read_mcp_resource`、`list_mcp_resources`、`list_mcp_resource_templates` | —                                     |
-| 其他                 | 同名工具                                                                         | —                                     |
+| permission 名 | 覆盖工具                                                                         | 说明                                  |
+| ------------- | -------------------------------------------------------------------------------- | ------------------------------------- |
+| `bash`        | `bash`                                                                           | opencode 内置，id 与 dsh minimal 同名 |
+| `edit`        | `edit`、`write`、`apply_patch`                                                   | 内置编辑族（seeded 期默认**不放行**） |
+| `read`        | `read`、`read_mcp_resource`、`list_mcp_resources`、`list_mcp_resource_templates` | —                                     |
+| 其他          | 同名工具                                                                         | —                                     |
 
-默认 `["bash","str_replace_editor"]` 首轮模型可见 = 恰好两个工具，与 dsh
-minimal 的 `['bash','str_replace_editor']` 集合一致（dsh e2e 断言
-`web-agent-presets.e2e.ts:227`）；`deny *` 已隐藏内置 edit/write/apply_patch。
-**round-10 起默认 `[]`**：实测 0 工具才是唯一实证出 we 形态的配置（§2、D13），
-双工具形态作为 `whitelist` 显式配置项保留。
+**round-10 起默认 `[]`**：实测 0 工具才是唯一实证出 we 形态的配置（§2、D13）；
+白名单作为显式配置项保留（如需解锁后额外保留某工具）。
 
-### 8.2.2 alias 工具：`str_replace_editor`（D10）
+### 8.2.2 ~~alias 工具：`str_replace_editor`~~（round-10 已移除）
 
-- **注册**：`Hooks.tool = { str_replace_editor: tool({...}) }`（`registry.ts:196-199`
-  → `fromPlugin`，id = 对象 key；zod args → jsonSchema 发给 LLM）。
-- **schema 逐字复刻 dsh 原版**（`tool-str-replace-editor/src/index.ts:19-30,
-425-458`）：描述 = DEFAULT_DESCRIPTION 原文；参数 = `command`（enum
-  view/create/str_replace/insert，必填）+ `path`（必填，绝对路径）+
-  `file_text`/`insert_line`/`new_str`/`old_str`/`view_range`。
-- **execute 自实现**：view = 读文件/目录（cat -n 行号、view_range、16000 截断
-  - `<response clipped>` 标记）；create = 写文件（已存在报错）；str_replace =
-    唯一匹配替换（多/无匹配报错）；insert = 行插入。
-- **解锁时隐藏**：解锁规则（seeded 阶段信号出现时追加）末尾带
-  `str_replace_editor: deny` → 目录恢复 opencode 自然状态（用户："只是
-  system用一下，后边隐藏就行"）。
-- **降级点**：无 LSP 冲突检测/格式化（内置 edit 的能力，seeded 期用不上）。
+D10（round-5）曾注册插件自定义工具 `str_replace_editor`（schema 逐字复刻
+dsh）并替换 bash 描述（`tool.definition`），意图复现 dsh minimal 双工具锚定。
+round-9 实测**双工具在 opencode 环境复现不了 we 锚定**（standard-like），
+0 工具才是唯一实证形态（D13）→ **round-10 移除**：
+
+- 删 `src/str-replace-editor.ts` / `src/bash-description.ts` / `Hooks.tool` /
+  `tool.definition` hook；
+- 解锁规则不再追加 `str_replace_editor: deny`（`unlockRules` 回归纯
+  agent ruleset + session denies + 哨兵）；
+- 移除理由：zero 形态下两处污染——插件工具在旁路/未门控/探针会话可见
+  （无 `deny *`）；假 bash 描述在解锁后覆盖 opencode 原生描述（违背
+  "恢复自然状态"）。
   | `agents.include` / `agents.exclude` | 全部 | 自定义 agent 通配符过滤（D7） |
   | `probe.ttlMs` | 300000 | 探针失败旁路 TTL |
   | `probe.cacheDir` | `~/.local/share/opencode/dsv4-anchored/` | 缓存与状态文件目录 |
@@ -402,10 +397,9 @@ grep dsv4-anchored ~/.local/share/opencode/log/opencode.log
    - 重启 resume：pending 悬挂 → ensure 补发 `round2.sent`；verified 会话
      不再注入；seeded/unsealed 会话按边界后信号解锁、按窗口判别。
    - compaction 后：回退 seeded（重新注入 + 重新判别）。
-3. **判别效果实测**（唯一真正待验证项）：按 dsh verify 清单复验——首轮
-   header tools 数量、首行风格、`let me` 计数（str_replace_editor 已逐字复刻
-   dsh schema；bash 为 opencode 原生描述/参数，工具名与 dsh minimal 一致），
-   插件据此自动判别（N=3 轮内达成 → verified）。
+3. **判别效果实测**（唯一真正待验证项）：按 dsh verify 清单复验——锚定轮
+   header tools 数量（0 个）、锚定回复首行风格、`let me` 计数，插件据此自动
+   判别（N=3 轮内达成 → verified）。
    **不达标时的升级路径：D11 选择性剥离**（§6.1）。
 
 ## 10. 已知限制
@@ -426,9 +420,10 @@ grep dsv4-anchored ~/.local/share/opencode/log/opencode.log
 ## 11. 实现顺序
 
 1. 日志模块（两级 + debug 短路 + 事件清单）——其余模块的观测基础
-2. str_replace_editor 工具注册（D10）：`Hooks.tool`，schema 逐字复刻 dsh，
-   execute 自实现 view/create/str_replace/insert
-3. 状态机 + permission 规则（seeded/解锁/判别哨兵，D10 白名单与隐藏 deny）
+2. ~~str_replace_editor 工具注册（D10）~~：round-10 已移除（实测双工具
+   复现不了 we 锚定；插件不注册工具，§8.2.2）
+3. 状态机 + permission 规则（seeded/解锁/判别哨兵，白名单与 compaction
+   工具集）
 4. 探针捕获（create/title → prompt → transform 捕获+throw → delete；缓存
    key/并发去重/磁盘持久化/failed TTL/旁路）
 5. chat.message ensure（subagent 识别）+ 首轮注入（幂等标记）+ 解锁判定

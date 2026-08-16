@@ -293,6 +293,13 @@ action:"deny"}` 在规则末尾**（findLast 命中）→ 隐藏插件工具，�
 期白名单工具（bash/str_replace_editor）免 ask 语义同样适用
 （`str_replace_editor: allow` 免询问）。
 
+**D10 修订（round-10，已移除）**：round-9 实测双工具在 opencode 环境复现不了
+we 锚定（standard-like），0 工具才是唯一实证形态（D13）→ 插件不再注册
+`str_replace_editor`、不再替换 bash 描述（`tool.definition`）。移除理由：zero
+形态下插件工具在旁路/未门控/探针会话可见（无 `deny *`）、假 bash 描述在解锁后
+覆盖原生描述——两处污染。实现见 design.md §8.2.2；测试（str-replace-editor
+4 命令用例）随之删除。
+
 ## D11: 首轮注入的扰动风险与备选方案（Decided, 2026-08-16 round-5）
 
 **背景**：D3 定案首轮把捕获的 system 全量 prepend 到首条 user 消息。对照 dsh
