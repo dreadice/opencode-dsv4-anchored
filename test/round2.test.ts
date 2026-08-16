@@ -8,7 +8,13 @@ import {makeLogger} from '@/logger';
 import {DEFAULT_TERMS} from '@/verify';
 import {getStage} from '@/stage';
 import {INJECT_MARKER} from '@/inject';
-import {createFakeClient, addSession, user} from './fake-client.ts';
+import {
+  createFakeClient,
+  addSession,
+  user,
+  assistant,
+  reasoning,
+} from './fake-client.ts';
 
 const OPTIONS = {
   models: ['deepseek*v4*'],
@@ -227,4 +233,27 @@ test('TC-2-28d: 轮 2 消息入库（fake prompt 持久化）→ ensure 解锁',
   });
   assert.equal(res.action, 'unlock');
   assert.equal(getStage(client._sessions.get('ses_1')!.permission), 'unsealed');
+});
+
+test('TC-2-35: 轮 2 结束后立即判别 verified（无需再发消息）', async () => {
+  const {ctx, client, pendingStore} = makeCtx();
+  seedProbe(ctx);
+  addSession(client, {
+    id: 'ses_1',
+    permission: [
+      {permission: '__dsv4_stage__', pattern: 'unsealed', action: 'allow'},
+    ],
+  });
+  client._messages.set('ses_1', [
+    assistant('msg_a', [reasoning('We need to fix it.')]),
+  ]);
+  pendingStore.map.set('ses_1', {
+    parts: [{type: 'text', text: 'real task'}],
+    messageID: 'msg_1',
+    ts: Date.now(),
+  });
+  client.setPromptHandler(async () => ({}));
+  const ok = await sendRound2(ctx, 'ses_1');
+  assert.equal(ok, true);
+  assert.equal(getStage(client._sessions.get('ses_1')!.permission), 'verified');
 });

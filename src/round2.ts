@@ -5,6 +5,9 @@ import {
 } from '@/inject';
 import {probeKey, type ProbeStore} from '@/probe';
 import {savePendingStore, type PendingStore} from '@/pending';
+import {getStage, STAGE_PERMISSION, type Rule} from '@/stage';
+import {verifyText} from '@/verify';
+import {lastCompactionBoundary} from '@/epoch';
 import type {EnsureOptions, ToastFn} from '@/core';
 import type {Logger} from '@/logger';
 
@@ -25,7 +28,18 @@ export type Round2Ctx = {
         directory: string;
         agent: string;
         model?: {id: string; providerID: string};
+        permission?: Rule[];
       }>;
+      messages(opts: {path: {id: string}}): Promise<
+        Array<{
+          info: {role?: string};
+          parts: Array<{type: string; text?: unknown}>;
+        }>
+      >;
+      update(opts: {
+        path: {id: string};
+        body: {permission?: Rule[]};
+      }): Promise<unknown>;
       prompt(opts: {
         path: {id: string};
         body: {
@@ -43,6 +57,57 @@ export type Round2Ctx = {
   pendingFile: string;
   toast?: ToastFn;
 };
+
+/**
+ * 轮 2 完成后立即补一次判别：如果此时已经 `unsealed` 且历史 assistant 消息
+ * 命中 `verifyText`，直接追加 `verified` 哨兵并 toast，避免用户必须再发一条
+ * 消息才看到 verified。
+ */
+async function verifyAfterRound2(
+  ctx: Round2Ctx,
+  sessionID: string
+): Promise<void> {
+  const session = await ctx.client.session.get({path: {id: sessionID}});
+  const stage = getStage(session.permission ?? []);
+  if (stage !== 'unsealed') return;
+  const history = await ctx.client.session.messages({path: {id: sessionID}});
+  const boundary = lastCompactionBoundary(history);
+  const post = boundary === -1 ? history : history.slice(boundary + 1);
+  const assistants = post.filter(m => m.info.role === 'assistant');
+  for (const m of assistants) {
+    const text = m.parts
+      .filter(p => p.type === 'reasoning' || p.type === 'text')
+      .map(p => String(p.text ?? ''))
+      .join('\n');
+    if (text && verifyText(text, ctx.options.verifyTerms)) {
+      await ctx.client.session.update({
+        path: {id: sessionID},
+        body: {
+          permission: [
+            {
+              permission: STAGE_PERMISSION,
+              pattern: 'verified',
+              action: 'allow',
+            },
+          ],
+        },
+      });
+      ctx.logger.info('verify.passed', {
+        sessionID,
+        checked: assistants.length,
+      });
+      ctx.toast?.({
+        title: 'dsv4-anchored',
+        message: '锚定判别通过（verified）',
+        variant: 'success',
+      });
+      return;
+    }
+  }
+  if (assistants.length >= ctx.options.verifyN) {
+    ctx.logger.warn('verify.giveup', {sessionID, checked: assistants.length});
+  }
+}
 
 export async function sendRound2(
   ctx: Round2Ctx,
@@ -81,7 +146,7 @@ export async function sendRound2(
       }
     }
     parts.push(...pending.parts);
-    await ctx.client.session.prompt({
+    const promptPromise = ctx.client.session.prompt({
       path: {id: sessionID},
       body: {
         parts,
@@ -91,16 +156,19 @@ export async function sendRound2(
           : undefined,
       },
     });
-    ctx.logger.info('round2.sent', {
-      sessionID,
-      partCount: parts.length,
-      sysInjected: parts.length > pending.parts.length,
-    });
+    // toast 在“已发出”时立即提示，不等整个 ReAct 跑完。
     ctx.toast?.({
       title: 'dsv4-anchored',
       message: '轮 2 已自动发出（真实任务 + 完整工具）',
       variant: 'info',
     });
+    await promptPromise;
+    ctx.logger.info('round2.sent', {
+      sessionID,
+      partCount: parts.length,
+      sysInjected: parts.length > pending.parts.length,
+    });
+    await verifyAfterRound2(ctx, sessionID);
     return true;
   } catch (error) {
     map.set(sessionID, pending);
