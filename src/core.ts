@@ -5,13 +5,17 @@ import {
   seededRules,
   unlockRules,
   extractSessionDenies,
+  getTrackedAgent,
+  getTrackedModel,
+  agentModelTrackRules,
   STAGE_PERMISSION,
   type Rule,
   type Stage,
 } from '@/stage';
 import {verifyText, type VerifyTerms} from '@/verify';
 import {
-  hasInjectionMarker,
+  hasInjectionMarkerFor,
+  injectionMarkerFor,
   buildInjectionPart,
   filterFirstTurnSystem,
   newPartId,
@@ -147,12 +151,49 @@ export async function ensureState(
   // 会在 getOrProbe 的 inFlight 上自等（与探针 prompt 互等死锁）。
   if (ctx.probeSessions.has(input.sessionID))
     return {action: 'none', stage: 'pristine'};
-  if (!gateModel(input.model, options.models))
-    return {action: 'none', stage: 'pristine'};
 
   const session = await client.session.get({path: {id: input.sessionID}});
-  const key = probeKey(session.directory, session.agent, input.model.modelID);
+  const ruleset = session.permission ?? [];
+  const stage = getStage(ruleset);
+  const trackedAgent = getTrackedAgent(ruleset);
+  const trackedModel = getTrackedModel(ruleset);
+  const agentChanged = session.agent !== trackedAgent;
+  const modelChanged = input.model.modelID !== trackedModel;
+  const changed = agentChanged || modelChanged;
 
+  // 非门控模型：插件不替换 system/不注入，但若会话已被插件碰过（有 seeded
+  // deny），需要把权限恢复成当前 agent 的自然 ruleset，避免残留锁工具。
+  if (!gateModel(input.model, options.models)) {
+    if (stage !== 'pristine' && (changed || stage === 'seeded')) {
+      const agents = await client.app.agents();
+      const agentRuleset =
+        agents.find(a => a.name === session.agent)?.permission ?? [];
+      const denies = extractSessionDenies(ruleset);
+      await client.session.update({
+        path: {id: input.sessionID},
+        body: {
+          permission: [
+            ...agentRuleset,
+            ...denies,
+            {
+              permission: STAGE_PERMISSION,
+              pattern: 'unsealed',
+              action: 'allow',
+            },
+            ...agentModelTrackRules(session.agent, input.model.modelID),
+          ],
+        },
+      });
+      logger.info('native.restore', {
+        sessionID: input.sessionID,
+        agent: session.agent,
+        model: input.model.modelID,
+      });
+    }
+    return {action: 'none', stage};
+  }
+
+  const key = probeKey(session.directory, session.agent, input.model.modelID);
   const probe = await getOrProbe(client, ctx.probeStore, key, {
     probeTtlMs: options.probeTtlMs,
     agent: session.agent,
@@ -162,7 +203,6 @@ export async function ensureState(
   });
   if (probe.bypass) {
     logger.warn('bypass', {key, reason: 'probe failed or ttl'});
-    // wire 兼容：新会话 GET /session/:id 可能无 permission 字段（serve 实测）
     ctx.toast?.({
       title: 'dsv4-anchored',
       message: '探针失败，本次按原生处理（bypass）',
@@ -174,12 +214,61 @@ export async function ensureState(
   const history = await client.session.messages({path: {id: input.sessionID}});
   const boundary = lastCompactionBoundary(history);
   const allParts = history.flatMap(m => m.parts);
-  const stage = getStage(session.permission ?? []);
   const post = boundary === -1 ? history : history.slice(boundary + 1);
   const anchorDone = post.some(m => m.info.role === 'assistant');
 
   let injected = false;
   let anchored = false;
+  let resynced = false;
+
+  // 中途切换 agent/model：先重同步 permission，再处理注入/锚定。
+  // - seeded：只更新跟踪哨兵，等解锁信号时用新 agent ruleset；
+  // - unsealed：追加新 agent ruleset，覆盖旧 agent 权限；
+  // - verified：追加新 agent ruleset，但不追加 unsealed（保持 verified）。
+  if (changed && stage !== 'pristine') {
+    const agents = await client.app.agents();
+    const agentRuleset =
+      agents.find(a => a.name === session.agent)?.permission ?? [];
+    const denies = extractSessionDenies(ruleset);
+    const track = agentModelTrackRules(session.agent, input.model.modelID);
+    if (stage === 'seeded') {
+      await client.session.update({
+        path: {id: input.sessionID},
+        body: {permission: track},
+      });
+    } else if (stage === 'unsealed') {
+      await client.session.update({
+        path: {id: input.sessionID},
+        body: {
+          permission: [
+            ...agentRuleset,
+            ...denies,
+            {
+              permission: STAGE_PERMISSION,
+              pattern: 'unsealed',
+              action: 'allow',
+            },
+            ...track,
+          ],
+        },
+      });
+    } else if (stage === 'verified') {
+      await client.session.update({
+        path: {id: input.sessionID},
+        body: {
+          permission: [...agentRuleset, ...denies, ...track],
+        },
+      });
+    }
+    resynced = true;
+    logger.info('resync', {
+      sessionID: input.sessionID,
+      agent: session.agent,
+      model: input.model.modelID,
+      stage,
+    });
+  }
+
   // zero-anchored 锚定轮（D13 §4.5）：真实消息推迟 pending，首轮只有锚定消息。
   // 状态推导 = pending 存在性 + 边界后 assistant 消息（锚定回复），不用标记。
   const anchorText = options.anchorText;
@@ -218,19 +307,24 @@ export async function ensureState(
     }
     // pending 无 + 锚定已落库（旧会话/轮 2 已发出）→ 正常放行
   } else if (
-    stage === 'unsealed' &&
+    (stage === 'unsealed' || (stage === 'verified' && changed)) &&
     options.injectSystem !== false &&
-    !hasInjectionMarker(allParts) &&
+    !hasInjectionMarkerFor(allParts, session.agent, input.model.modelID) &&
     probe.system
   ) {
-    // 注入 user system（D13 轮 2 由 sendRound2 携带；此路径为后续消息/resume
-    // 兜底）：去 opencode persona（default.txt 段），保留行为要求/env/AGENTS/
-    // 技能/MCP；工具已由 unlock 恢复全量。
+    // 注入 user system（D13 轮 2 由 sendRound2 携带；此路径为后续消息/resume/
+    // 切换 agent-model 兜底）：去 opencode persona，保留行为要求/env/AGENTS/
+    // 技能/MCP；工具已由 unlock/重同步恢复。
     const system = options.firstTurnFilter
       ? filterFirstTurnSystem(probe.system, options.firstTurnFilter)
       : probe.system;
     input.outputParts.unshift(
-      buildInjectionPart(system, input.sessionID, input.messageID)
+      buildInjectionPart(
+        system,
+        input.sessionID,
+        input.messageID,
+        injectionMarkerFor(session.agent, input.model.modelID)
+      )
     );
     injected = true;
   }
@@ -238,14 +332,25 @@ export async function ensureState(
     sessionID: input.sessionID,
     stage,
     gating: 'hit',
-    injectSource: anchored ? 'anchor' : injected ? 'probe' : 'none',
+    injectSource: anchored
+      ? 'anchor'
+      : injected
+        ? 'probe'
+        : resynced
+          ? 'resync'
+          : 'none',
     subagent: session.parentID !== undefined,
   });
 
   if (stage === 'pristine') {
     await client.session.update({
       path: {id: input.sessionID},
-      body: {permission: seededRules(options.whitelist)},
+      body: {
+        permission: [
+          ...seededRules(options.whitelist),
+          ...agentModelTrackRules(session.agent, input.model.modelID),
+        ],
+      },
     });
     return {action: 'seeded', stage: 'seeded'};
   }
@@ -261,7 +366,12 @@ export async function ensureState(
       const denies = extractSessionDenies(session.permission ?? []);
       await client.session.update({
         path: {id: input.sessionID},
-        body: {permission: unlockRules(agentRuleset, denies)},
+        body: {
+          permission: [
+            ...unlockRules(agentRuleset, denies),
+            ...agentModelTrackRules(session.agent, input.model.modelID),
+          ],
+        },
       });
       logger.info('unlock', {sessionID: input.sessionID, agent: session.agent});
       ctx.toast?.({

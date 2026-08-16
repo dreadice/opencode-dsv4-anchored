@@ -30,11 +30,26 @@
   可还原
 - 探针失败 → 该 key 按 TTL 旁路，会话完全原生（不替换/不锚定/不注入）
 
+## 中途切换 agent / model
+
+同会话中途切换 agent 或门控模型时，插件会在下一条 `chat.message` 自动：
+
+1. 用 `__dsv4_agent__` / `__dsv4_model__` 哨兵检测到变化；
+2. 重同步权限：把当前 agent 的 ruleset 追加到 session permission 末尾，
+   覆盖旧 agent 的权限（例如 explore 的 `*: deny` 会压住之前 build 的
+   `*: allow`）；
+3. 重新注入当前 agent/model 的原始 system（带 agent/model 指纹的幂等标记）；
+4. 切换到非门控模型（如 `hy3-free`）时，不替换 system、不注入，但会把
+   权限恢复成原生状态（日志 `native.restore`）。
+
+日志关键词：`resync`、`native.restore`、`injectSource=resync`。
+
 ## 安装
 
 opencode 支持两种插件加载方式（官方文档：本地文件 / npm 包），任选其一
-（**互斥，勿同时使用**——`.opencode/plugins/*.js` 与 `plugin` 配置同时存在
-会双加载，chat.message 触发两次）：
+（**互斥，勿同时使用**——全局 `~/.config/opencode/plugins/`、项目
+`.opencode/plugins/*.js`、`plugin` 配置同时存在会双加载，chat.message 触发
+两次、探针重复、toast 重复；插件内有单例兜底，但应避免）：
 
 **1. npm 包（推荐，开箱即用）**——opencode.json：
 
@@ -76,8 +91,8 @@ grep dsv4-anchored ~/.local/share/opencode/log/opencode.log
 cat ~/.local/share/opencode/dsv4-anchored/probe-cache.json   # 探针缓存/状态
 ```
 
-事件链：`probe.success → chat.message(seeded) → round2.sent → unlock →
-verify.passed/giveup`。
+事件链：`plugin.loaded(version) → probe.success → chat.message(seeded) →
+round2.sent → unlock → verify.passed/giveup`。
 
 ## 与其他插件共存
 

@@ -3,9 +3,14 @@ import assert from 'node:assert/strict';
 import {ensureState, type EnsureCtx, type EnsureInput} from '@/core';
 import {createProbeStore, captureProbeSystem, probeKey} from '@/probe';
 import {makeLogger} from '@/logger';
-import {STAGE_PERMISSION, type Rule} from '@/stage';
+import {
+  STAGE_PERMISSION,
+  getStage,
+  agentModelTrackRules,
+  type Rule,
+} from '@/stage';
 import {DEFAULT_TERMS} from '@/verify';
-import {INJECT_MARKER} from '@/inject';
+import {INJECT_MARKER, injectionMarkerFor} from '@/inject';
 import {createPendingStore} from '@/pending';
 import {
   createFakeClient,
@@ -41,6 +46,9 @@ function makeCtx(): {
     giveupOnce: new Set(),
     pendingStore: createPendingStore(),
     pendingFile: '/tmp/dsv4-pending-test.json',
+    toast: opts => {
+      void client.tui.showToast({body: opts});
+    },
   };
   return {ctx, client};
 }
@@ -177,7 +185,7 @@ test('TC-2-6: seeded + 历史 assistant 消息 → 解锁', async () => {
     '解锁应发 TUI toast'
   );
   const s = client._sessions.get('ses_1')!;
-  assert.equal(s.permission.at(-1)!.pattern, 'unsealed');
+  assert.equal(getStage(s.permission), 'unsealed');
   assert.ok(
     s.permission.some(r => r.permission === '*' && r.action === 'allow'),
     'agent ruleset 应覆盖'
@@ -200,7 +208,9 @@ test('TC-2-7: 解锁幂等（unsealed 不再重复追加；判别独立进行）
   const res = await ensureState(ctx, input('ses_1'));
   assert.equal(res.action, 'pending', '判别未通过应保持 pending');
   const s = client._sessions.get('ses_1')!;
-  assert.equal(s.permission.length, 1, 'unsealed 不应重复解锁追加');
+  const before = s.permission.length;
+  await ensureState(ctx, input('ses_1'));
+  assert.equal(s.permission.length, before, 'unsealed 不应重复解锁追加');
 });
 
 test('TC-2-8: 判别通过 → verified', async () => {
@@ -217,7 +227,7 @@ test('TC-2-8: 判别通过 → verified', async () => {
     '判别通过应发 TUI toast'
   );
   const s = client._sessions.get('ses_1')!;
-  assert.equal(s.permission.at(-1)!.pattern, 'verified');
+  assert.equal(getStage(s.permission), 'verified');
 });
 
 test('TC-2-9: 判别 giveup（N=3 条不符，warn 一次）', async () => {
@@ -247,11 +257,17 @@ test('TC-2-9: 判别 giveup（N=3 条不符，warn 一次）', async () => {
 test('TC-2-10: verified 稳定（不再动作）', async () => {
   const {ctx, client} = makeCtx();
   seedProbe(ctx);
-  addSession(client, {id: 'ses_1', permission: [sentinel('verified')]});
+  addSession(client, {
+    id: 'ses_1',
+    permission: [
+      sentinel('verified'),
+      ...agentModelTrackRules('build', MODEL.modelID),
+    ],
+  });
   const res = await ensureState(ctx, input('ses_1'));
   assert.equal(res.action, 'verified');
   const s = client._sessions.get('ses_1')!;
-  assert.equal(s.permission.length, 1);
+  assert.equal(s.permission.length, 3);
 });
 
 test('TC-2-11: bypass 稳定（failed TTL 内全旁路）', async () => {
@@ -334,7 +350,9 @@ test('TC-2-14b: 边界后已有注入标记则不重复注入', async () => {
   addSession(client, {id: 'ses_1', permission: [sentinel('unsealed')]});
   client._messages.set('ses_1', [
     user('msg_c', [{type: 'compaction'}]),
-    user('msg_2', [textPart(`${INJECT_MARKER}\nSYSTEM`)]),
+    user('msg_2', [
+      textPart(`${injectionMarkerFor('build', MODEL.modelID)}\nSYSTEM`),
+    ]),
   ]);
   const parts: unknown[] = [{type: 'text', text: 'continue'}];
   await ensureState(ctx, input('ses_1', parts));
@@ -507,5 +525,68 @@ test('TC-2-31: ensure 悬挂补发防重——sending 中的会话不重复发',
   assert.ok(
     ctx.pendingStore.map.has('ses_d'),
     'pending 保留（等待首次发送完成）'
+  );
+});
+
+test('切换 agent：verified 后重同步权限并注入新 agent system', async () => {
+  const {ctx, client} = makeCtx();
+  seedProbe(ctx, '/proj', 'explore');
+  addSession(client, {
+    id: 'ses_switch_agent',
+    agent: 'explore',
+    permission: [
+      sentinel('verified'),
+      ...agentModelTrackRules('build', MODEL.modelID),
+    ],
+  });
+  const parts: unknown[] = [{type: 'text', text: 'read only task'}];
+  const res = await ensureState(ctx, input('ses_switch_agent', parts));
+  assert.equal(res.action, 'verified');
+  assert.equal(parts.length, 2, '切换 agent 后应注入新 system');
+  const marker = injectionMarkerFor('explore', MODEL.modelID);
+  assert.ok(
+    String((parts[0] as {text: string}).text).includes(marker),
+    '注入标记应包含新 agent/model'
+  );
+  const s = client._sessions.get('ses_switch_agent')!;
+  assert.equal(getStage(s.permission), 'verified');
+  assert.ok(
+    s.permission.some(
+      r => r.permission === '__dsv4_agent__' && r.pattern === 'explore'
+    ),
+    'agent 跟踪哨兵应更新'
+  );
+});
+
+test('切换非门控模型：恢复自然权限并移到 unsealed', async () => {
+  const {ctx, client} = makeCtx();
+  addSession(client, {
+    id: 'ses_switch_hy3',
+    agent: 'build',
+    model: {id: 'hy3-free', providerID: 'opencode'},
+    permission: [
+      sentinel('seeded'),
+      ...agentModelTrackRules('build', MODEL.modelID),
+    ],
+  });
+  const parts: unknown[] = [{type: 'text', text: 'hi'}];
+  const res = await ensureState(ctx, {
+    ...input('ses_switch_hy3', parts),
+    model: {providerID: 'opencode', modelID: 'hy3-free'},
+  });
+  assert.equal(res.action, 'none');
+  const s = client._sessions.get('ses_switch_hy3')!;
+  assert.equal(getStage(s.permission), 'unsealed');
+  assert.ok(
+    s.permission.some(
+      r => r.permission === '__dsv4_model__' && r.pattern === 'hy3-free'
+    ),
+    'model 跟踪哨兵应更新'
+  );
+  assert.ok(
+    s.permission.some(
+      r => r.permission === '*' && r.pattern === '*' && r.action === 'allow'
+    ),
+    '应恢复 build 自然权限'
   );
 });

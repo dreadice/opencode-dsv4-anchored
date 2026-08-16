@@ -6,6 +6,7 @@ import {createProbeStore, captureProbeSystem, probeKey} from '@/probe';
 import {createPendingStore, type PendingStore} from '@/pending';
 import {makeLogger} from '@/logger';
 import {DEFAULT_TERMS} from '@/verify';
+import {getStage} from '@/stage';
 import {INJECT_MARKER} from '@/inject';
 import {createFakeClient, addSession, user} from './fake-client.ts';
 
@@ -33,6 +34,9 @@ function makeCtx(): {
     probeStore: createProbeStore(),
     pendingStore,
     pendingFile: '/tmp/dsv4-pending-test.json',
+    toast: opts => {
+      void client.tui.showToast({body: opts});
+    },
   };
   return {ctx, client, pendingStore};
 }
@@ -222,8 +226,5 @@ test('TC-2-28d: 轮 2 消息入库（fake prompt 持久化）→ ensure 解锁',
     outputParts: parts as never,
   });
   assert.equal(res.action, 'unlock');
-  assert.equal(
-    client._sessions.get('ses_1')!.permission.at(-1)!.pattern,
-    'unsealed'
-  );
+  assert.equal(getStage(client._sessions.get('ses_1')!.permission), 'unsealed');
 });

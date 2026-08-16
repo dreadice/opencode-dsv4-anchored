@@ -428,6 +428,34 @@ header tools 数量异常），则启用备选；达标则维持现状。
    （dsh 原文）+ 注入默认 stripPersona。
 7. **ZH_TERMS 移除**：锚定消息/回复恒英文，中文实验词表不再需要。
 
+## D14: 双实例防护、SDK 错误检查与 agent/model 切换（Decided, round-12）
+
+**问题**：
+
+- 全局插件、项目 `.opencode/plugins/*.js`、`plugin` 配置同时存在时 opencode 会
+  加载多个插件实例；每实例独立 `probeStore/pendingStore/probeSessions` → 双探针、
+  重复 toast、甚至嵌套 prompt 卡死。
+- SDK 方法返回 `{data, error}`，`adaptClient` 直接取 `.data` 会吞掉
+  `session.update` 失败 → 哨兵不落库、状态不前进、重复判断/toast。
+- 同会话中途切换 agent/model 时，旧 agent 的 unlock ruleset 仍在 session
+  permission 末尾，`findLast` 会覆盖新 agent 权限；且已 verified 后新
+  agent/model 的 system 不会重新注入。
+
+**决定**：
+
+1. 插件工厂加进程级单例 `globalThis.__dsv4AnchoredActive`，第二个实例返回空
+   hooks。
+2. `adaptClient` 统一 `unwrap()` 检查 `.error` 并 throw。
+3. 新增 `__dsv4_agent__` / `__dsv4_model__` 跟踪哨兵；`ensureState` 检测切换后：
+   - `seeded`：只更新跟踪哨兵；
+   - `unsealed`：追加当前 agent ruleset + denies + unsealed + 新跟踪，并重注入；
+   - `verified`：追加当前 agent ruleset + denies + 新跟踪（保持 verified），并
+     重注入；
+   - 非门控模型：`native.restore`（当前 agent ruleset + denies + unsealed +
+     新跟踪），不替换 system/不注入。
+4. 注入标记带 `:agent:modelID` 指纹，避免旧标记阻止新 system 注入。
+5. `plugin.loaded` 日志带 `version`，便于排查旧版全局插件。
+
 | 机制                                                                                                                                                | 来源                                                                       |
 | --------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
 | 工具可见性由 permission ruleset 控制，`findLast` 后写覆盖；`merge` = 按序拼接，agent 规则在前、session 规则在后                                     | `reference/opencode/.../permission/index.ts:28,204`；`session/tools.ts:87` |

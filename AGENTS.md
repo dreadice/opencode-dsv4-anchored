@@ -10,7 +10,7 @@ opencode，解决 DeepSeek V4 过拟合（一见完整 system 就抢跑）。**�
   配置 §8）——**核心参考**
 - `docs/research.md` — opencode 机制源码事实（文件:行号），含 §4.12 D13 轮 2
   触发（busy 丢 runLoop）
-- `docs/decisions.md` — 决策记录 D1-D13（含 round-10 修订）
+- `docs/decisions.md` — 决策记录 D1-D14（含 round-10/12 修订）
 - `docs/testing.md` / `docs/live-testing.md` — 用例清单 / 真机验证手册
 - `docs/handoff.md` — 跨会话状态与讨论留档
 - `reference/` — 上游源码**只读参考，不提交**（opencode v1.18.18 /
@@ -20,7 +20,7 @@ opencode，解决 DeepSeek V4 过拟合（一见完整 system 就抢跑）。**�
 
 ```bash
 npm run typecheck    # tsc --noEmit
-npm run test         # tsx --test "test/*.test.ts"（89 用例）
+npm run test         # tsx --test "test/*.test.ts"（94 用例）
 npm run lint         # eslint
 npm run build        # esbuild bundle → dist/index.js
                      # 注意：prebuild 会 prettier --write .（含 docs/，可能产生格式 commit）
@@ -51,8 +51,13 @@ npm run build        # esbuild bundle → dist/index.js
 - **状态持久化**：session permission 哨兵（`__dsv4_stage__`：seeded/unsealed/
   verified）+ 探针缓存/probe-cache.json + pending.json——重启/resume/compaction
   可还原
+- **agent/model 切换**：`__dsv4_agent__` / `__dsv4_model__` 跟踪哨兵记录上次
+  处理的 agent/model；切换后重同步当前 agent ruleset 并重新注入新 system
+  （门控模型），非门控模型恢复原生权限（`native.restore`）
 - **探针**：按 (directory, agent, modelID, 日期) 缓存；失败按 key + TTL 旁路
   （不替换/不锚定/不注入 = 完全原生）
+- **单例保护**：插件工厂有进程级 `__dsv4AnchoredActive` 守卫，防止全局/项目/
+  npm 多路同时加载导致双实例（重复 toast、双探针）
 
 ## 关键陷阱（真机验证发现，改代码时务必遵守）
 
@@ -75,6 +80,13 @@ npm run build        # esbuild bundle → dist/index.js
    we 锚定）；幂等标记只用于轮 2 的 user system part（`INJECT_MARKER`）
 7. 不要在 ensure 里 `await` 轮 2 发送（fire-and-forget，防重靠发前清 pending
    - sending 集合；失败恢复 pending 交 ensure 补发）
+8. **双重安装**：全局插件、项目 `.opencode/plugins/*.js`、`plugin` 配置三选一；
+   插件内已有进程级单例兜底，但文档/用户仍应避免同时安装
+9. **SDK 调用必须检查 `.error`**：`src/sdk-adapter.ts` 的 `unwrap()` 会 throw；
+   不要直接取 `.data` 忽略错误（否则哨兵没写入但插件误以为成功）
+10. **agent/model 切换不是改 session 元数据，而是下一条 prompt 带新值**：
+    `createUserMessage` 会 `setAgentModel` 更新 session；插件靠
+    `__dsv4_agent__/__dsv4_model__` 检测并重同步权限 + 重注入 system
 
 ## 提交规范
 

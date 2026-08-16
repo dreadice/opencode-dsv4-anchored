@@ -34,6 +34,20 @@ export function hasInjectionMarker(
   return hasMarker(parts, INJECT_MARKER);
 }
 
+/** 当前 agent/model 对应的注入标记（切换 agent/model 后旧标记不应阻止新注入）。 */
+export function injectionMarkerFor(agent: string, modelID: string): string {
+  return `${INJECT_MARKER}:${agent}:${modelID}`;
+}
+
+/** 历史 parts 中是否已有当前 agent/model 的注入标记。 */
+export function hasInjectionMarkerFor(
+  parts: Array<{type: string; text?: unknown}>,
+  agent: string,
+  modelID: string
+): boolean {
+  return hasMarker(parts, injectionMarkerFor(agent, modelID));
+}
+
 /** 注入 part：synthetic 标记 + 幂等标记文本 + 内容（system 或锚定消息）。 */
 export function buildInjectionPart(
   content: string,

@@ -7,8 +7,8 @@
 
 项目目录：`/home/liubohan/opencode/dsv4-adapter`（git 已初始化，`.gitignore` 含
 `reference/`、`node_modules/`、`dist/`）。
-当前状态：**实现完成（89 测试全绿）、真机验证完成（serve + HTTP API，v4-pro 与
-flash-free 均全链路通过）、npm 已发布（`@dreadice/opencode-dsv4-anchored@0.1.0`）**：
+当前状态：**实现完成（94 测试全绿）、真机验证完成（serve + HTTP API，v4-pro 与
+flash-free 均全链路通过）、npm 已发布（`@dreadice/opencode-dsv4-anchored@0.1.2`）**：
 
 - 实现：verify/gate/stage/inject/epoch/cache/probe/logger/core/system-transform/
   compaction/pending/round2/sdk-adapter/index
@@ -27,6 +27,10 @@ flash-free 均全链路通过）、npm 已发布（`@dreadice/opencode-dsv4-anch
   Agent 用 name / chat.message model 兜底）；serve 全链路验证
   （anchor we → round2 → 工具 → verify.passed）；npm 发布 + 安装方式定稿
   （官方仅本地文件/npm 两种）
+- **round-12（本会话）**：修复双重安装（进程级单例 + 文档警告）、SDK 错误
+  静默（`unwrap()` 检查 `.error`）、agent/model 切换重同步（跟踪哨兵 +
+  ruleset 重排 + system 重注入）、注入标记带 agent/model 指纹、`plugin.loaded`
+  版本日志；新增切换单测，94 测试全绿
 - 安装方式（opencode 官方仅两种，已发布 npm）：`"plugin": [["@dreadice/
 opencode-dsv4-anchored", {}]]`（推荐）或 `dist/index.js` →
   `.opencode/plugins/`（实测；配置字段 `plugin` 单数；options 用

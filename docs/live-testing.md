@@ -22,8 +22,9 @@ cp dist/index.js /tmp/opencode/smoke/.opencode/plugins/dsv4-anchored.js
 
 - 测试目录：`/tmp/opencode/smoke`（已建，含 README.md、opencode.json、
   `.opencode/plugins/`）
-- **不要同时存在 `.opencode/plugins/*.js` 和 `plugin` 配置**（双加载会导致
-  chat.message 触发两次、注入行为错乱）
+- **不要同时存在全局 `~/.config/opencode/plugins/`、项目
+  `.opencode/plugins/*.js` 和 `plugin` 配置**（双加载会导致 chat.message 触发
+  两次、双探针、重复 toast；插件内有单例兜底，但测试时应三选一）
 - 安装方式（opencode 官方仅两种，均实测）：`.opencode/plugins/*.{ts,js}`
   自动发现；或 `"plugin": [["@dreadice/opencode-dsv4-anchored", {}]]`
   （npm 包，已发布 0.1.0）
@@ -98,15 +99,18 @@ opencode run --model opencode/hy3-free "hi" --print-logs
 opencode run ... 2>&1 | grep "dsv4-anchored"
 ```
 
-| 事件                                                        | 含义                                     |
-| ----------------------------------------------------------- | ---------------------------------------- |
-| `probe.success key=... sysLen=...`                          | 探针捕获 system（10025B 级）             |
-| `chat.message stage=... gating=hit injectSource=...`        | 阶段/注入来源（probe/none）              |
-| `system.transform action=replace beforeLen=... afterLen=46` | system 替换 minimal（46 = persona 长度） |
-| `unlock agent=build`                                        | 晋升信号 → 全量工具                      |
-| `verify.passed checked=N`                                   | 判别达成（we 先于 let）→ verified        |
-| `verify.giveup checked=N`                                   | N 条未达成（warn 一次，不锁死）          |
-| `compaction.rollback`                                       | 压缩回退                                 |
+| 事件                                                        | 含义                                      |
+| ----------------------------------------------------------- | ----------------------------------------- |
+| `plugin.loaded version=...`                                 | 插件加载成功（含版本，便于排查旧版）      |
+| `probe.success key=... sysLen=...`                          | 探针捕获 system（10025B 级）              |
+| `chat.message stage=... gating=hit injectSource=...`        | 阶段/注入来源（probe/none/resync/anchor） |
+| `system.transform action=replace beforeLen=... afterLen=46` | system 替换 minimal（46 = persona 长度）  |
+| `unlock agent=build`                                        | 晋升信号 → 全量工具                       |
+| `resync agent=... model=... stage=...`                      | 切换 agent/model 后权限重同步             |
+| `native.restore agent=... model=...`                        | 非门控模型恢复原生权限                    |
+| `verify.passed checked=N`                                   | 判别达成（we 先于 let）→ verified         |
+| `verify.giveup checked=N`                                   | N 条未达成（warn 一次，不锁死）           |
+| `compaction.rollback`                                       | 压缩回退                                  |
 
 状态文件：`cat ~/.local/share/opencode/dsv4-anchored/probe-cache.json`
 （按天清理，含捕获的完整 system）。

@@ -1,4 +1,6 @@
 export const STAGE_PERMISSION = '__dsv4_stage__';
+export const AGENT_PERMISSION = '__dsv4_agent__';
+export const MODEL_PERMISSION = '__dsv4_model__';
 export const COMPACTION_TOOLS = [
   'read',
   'glob',
@@ -27,6 +29,24 @@ function findLast<T>(items: T[], pred: (item: T) => boolean): T | undefined {
 export function getStage(ruleset: Rule[]): Stage {
   const sentinel = findLast(ruleset, r => r.permission === STAGE_PERMISSION);
   return (sentinel?.pattern as Stage) ?? 'pristine';
+}
+
+/** 上次处理的 agent（惰性哨兵，不匹配真实工具）。 */
+export function getTrackedAgent(ruleset: Rule[]): string | undefined {
+  return findLast(ruleset, r => r.permission === AGENT_PERMISSION)?.pattern;
+}
+
+/** 上次处理的 modelID（惰性哨兵，不匹配真实工具）。 */
+export function getTrackedModel(ruleset: Rule[]): string | undefined {
+  return findLast(ruleset, r => r.permission === MODEL_PERMISSION)?.pattern;
+}
+
+/** agent/model 跟踪哨兵：用于检测同会话中途切换。 */
+export function agentModelTrackRules(agent: string, modelID: string): Rule[] {
+  return [
+    {permission: AGENT_PERMISSION, pattern: agent, action: 'allow'},
+    {permission: MODEL_PERMISSION, pattern: modelID, action: 'allow'},
+  ];
 }
 
 /** seeded 规则（D10 严格 minimal 工具对）：哨兵 → deny * → 白名单 → external_directory。 */

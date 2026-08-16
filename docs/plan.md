@@ -37,7 +37,8 @@ eslint、prettier。
 
 **当前进度**（更新于每次推进后）：
 
-- P0~P2：完成（89 测试全绿，L1 纯函数 + L2 fake client 集成含 D13 用例）
+- P0~P2：完成（94 测试全绿，L1 纯函数 + L2 fake client 集成含 D13 与
+  agent/model 切换用例）
 - P3：完成（插件入口 + SDK 适配 + 死锁/messageID 修复 + build/lint/typecheck
   干净 + CLI 冒烟通过）
 - P4：主体完成（TC-3-1~6、TC-3-9、TC-3-11 ✅；TC-3-10 中文已移除；

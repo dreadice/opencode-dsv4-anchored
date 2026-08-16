@@ -40,7 +40,7 @@
   "scripts": {
     "typecheck": "tsc --noEmit",
     "prebuild": "prettier --write .",
-    "build": "esbuild src/index.ts --bundle --platform=node --format=esm --alias:@=./src --outfile=dist/index.js",
+    "build": "esbuild src/index.ts --bundle --platform=node --format=esm --alias:@=./src --alias:@package=./package.json --outfile=dist/index.js",
     "prepare": "npm run build",
     "test": "tsx --test \"test/*.test.ts\"",
     "lint": "eslint .",

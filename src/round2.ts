@@ -1,4 +1,8 @@
-import {filterFirstTurnSystem, buildInjectionPart} from '@/inject';
+import {
+  filterFirstTurnSystem,
+  buildInjectionPart,
+  injectionMarkerFor,
+} from '@/inject';
 import {probeKey, type ProbeStore} from '@/probe';
 import {savePendingStore, type PendingStore} from '@/pending';
 import type {EnsureOptions, ToastFn} from '@/core';
@@ -66,7 +70,14 @@ export async function sendRound2(
         const system = ctx.options.firstTurnFilter
           ? filterFirstTurnSystem(probe.system, ctx.options.firstTurnFilter)
           : probe.system;
-        parts.push(buildInjectionPart(system, sessionID, pending.messageID));
+        parts.push(
+          buildInjectionPart(
+            system,
+            sessionID,
+            pending.messageID,
+            injectionMarkerFor(session.agent, session.model?.id ?? '')
+          )
+        );
       }
     }
     parts.push(...pending.parts);

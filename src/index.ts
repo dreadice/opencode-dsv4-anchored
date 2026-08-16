@@ -12,6 +12,9 @@ import type {FirstTurnFilter} from '@/inject';
 import {adaptClient, adaptLog, adaptToast} from '@/sdk-adapter';
 import {join} from 'node:path';
 import {homedir} from 'node:os';
+import pkg from '@package';
+
+const PLUGIN_VERSION = pkg.version;
 
 const DEFAULT_CACHE_DIR = join(
   homedir(),
@@ -60,6 +63,12 @@ function resolveOptions(options?: PluginOptions): EnsureOptions {
 }
 
 export const Dsv4Anchored: Plugin = async ({client}, options) => {
+  // 进程级单例：防止全局插件、项目插件、npm 配置同时加载导致双实例。
+  // 第二个实例直接返回空 hooks，不参与任何事件/toast。
+  const g = globalThis as unknown as {__dsv4AnchoredActive?: boolean};
+  if (g.__dsv4AnchoredActive) return {};
+  g.__dsv4AnchoredActive = true;
+
   const sdk = adaptClient(client);
   const eopts = resolveOptions(options);
   const cacheDir =
@@ -71,6 +80,7 @@ export const Dsv4Anchored: Plugin = async ({client}, options) => {
   const probeSessions = new Map<string, string>();
   const giveupOnce = new Set<string>();
   const logger = makeLogger(adaptLog(client));
+  logger.info('plugin.loaded', {cacheDir, version: PLUGIN_VERSION});
   const toast = eopts.toast !== false ? adaptToast(client) : undefined;
 
   const ctx = {

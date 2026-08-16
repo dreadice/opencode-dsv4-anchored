@@ -252,6 +252,26 @@ action:"allow"}`（不匹配任何真实工具，惰性；`findLast` 取阶段�
   `part.state.time.compacted` 只是清 tool 输出，**不是**压缩边界，不触发回退。
 - fresh 判定：session.messages 无 assistant 消息。
 
+### 5.5 中途切换 agent / model（round-12 新增）
+
+- **机制**：opencode 的 agent/model 是“每条 user 消息”的属性；下一条
+  `session.prompt` 带新 `agent`/`model` 时，`createUserMessage` 会
+  `setAgentModel` 更新 session（`prompt.ts:635-689`）。
+- **跟踪哨兵**：`__dsv4_agent__` / `__dsv4_model__` 两条惰性 permission 规则
+  记录“上次处理的 agent/model”；`findLast` 读取，append-only 不破坏状态机。
+- **检测**：`ensureState` 开头比较 `session.agent` / `input.model.modelID` 与
+  跟踪哨兵，不一致即 `changed`。
+- **行为**：
+  - `seeded`：只更新跟踪哨兵，等解锁信号时用新 agent ruleset；
+  - `unsealed`：追加当前 agent ruleset + session denies + `unsealed` 哨兵 +
+    新跟踪哨兵，并重新注入当前 agent/model 的 system；
+  - `verified`：追加当前 agent ruleset + session denies + 新跟踪哨兵（不追加
+    unsealed，保持 verified），并重新注入当前 agent/model 的 system；
+  - 非门控模型：追加当前 agent ruleset + denies + `unsealed` 哨兵 + 新跟踪
+    哨兵，不替换 system、不注入（日志 `native.restore`）。
+- **注入标记指纹**：`INJECT_MARKER` 后追加 `:agent:modelID`，避免切换后旧标记
+  阻止新 system 注入。
+
 ## 6. 注入与幂等（D3 修订 + round-10 修订）
 
 - 注入点：`chat.message` 原地 `output.parts.unshift(...)`（`prompt.ts:999-1047`：
@@ -262,7 +282,8 @@ action:"allow"}`（不匹配任何真实工具，惰性；`findLast` 取阶段�
   `stage === "unsealed"` 注入分支为后续消息 / resume 兜底（历史无幂等标记即
   注入）。
 - 注入内容 = **探针捕获的 system 全量** + 幂等标记文本（如
-  `[dsv4-anchored:injected]`）。
+  `[dsv4-anchored:injected]:agent:modelID`，round-12 起带 agent/model 指纹；
+  旧 `INJECT_MARKER` 仍作为前缀兼容）。
 - resume 判定：扫 session 历史 parts 中是否已有标记 → 已注入则不再注入。
 - **compaction 后重注入**：注入内容被压缩掉 → 回退 seeded 后注入判定统一为
   "历史无幂等标记即注入" → 自动重注入（对齐 dsh 每轮注入的语义，信息不丢）。
@@ -309,20 +330,23 @@ logError`（`handlers/control.ts:28-39`）；级别仅 debug/info/warn/error，
 
 ### 7.3 日志事件清单
 
-| 事件                | 级别 | 摘要字段（info）                                                                    | 全量字段（debug）     |
-| ------------------- | ---- | ----------------------------------------------------------------------------------- | --------------------- |
-| chat.message        | info | sessionID、stage、gating、injectSource(inject/bypass/none)、injectLen、visibleTools | 注入全文              |
-| probe.start         | info | key、sessionID                                                                      | —                     |
-| probe.success       | info | key、sysLen、sysHash                                                                | 捕获的 system 全文    |
-| probe.fail          | info | key、error、TTL 生效                                                                | 完整 error stack      |
-| bypass              | warn | key、reason                                                                         | —                     |
-| system.transform    | info | sessionID、gating、action(replace/passthrough)、beforeLen、afterLen、beforeHash     | 替换前后全文          |
-| unlock              | info | sessionID、agentRuleset 条数、排除 denies、哨兵 unsealed                            | 完整 ruleset 追加列表 |
-| round2.sent         | info | sessionID、partCount、sysInjected(是否含 user system part)                          | 轮 2 完整 parts       |
-| round2.fail         | warn | sessionID、error（pending 已恢复，ensure 补发兜底）                                 | —                     |
-| verify.passed       | info | sessionID、判别消息 id、特征摘要（首行、letMe 计数）                                | 判别消息全文          |
-| verify.giveup       | warn | sessionID、已检轮数 N                                                               | —                     |
-| compaction.rollback | warn | sessionID                                                                           | —                     |
+| 事件                | 级别 | 摘要字段（info）                                                                                  | 全量字段（debug）     |
+| ------------------- | ---- | ------------------------------------------------------------------------------------------------- | --------------------- |
+| plugin.loaded       | info | cacheDir、version                                                                                 | —                     |
+| chat.message        | info | sessionID、stage、gating、injectSource(inject/bypass/none/resync/anchor)、injectLen、visibleTools | 注入全文              |
+| probe.start         | info | key、sessionID                                                                                    | —                     |
+| probe.success       | info | key、sysLen、sysHash                                                                              | 捕获的 system 全文    |
+| probe.fail          | info | key、error、TTL 生效                                                                              | 完整 error stack      |
+| bypass              | warn | key、reason                                                                                       | —                     |
+| system.transform    | info | sessionID、gating、action(replace/passthrough)、beforeLen、afterLen、beforeHash                   | 替换前后全文          |
+| unlock              | info | sessionID、agentRuleset 条数、排除 denies、哨兵 unsealed                                          | 完整 ruleset 追加列表 |
+| resync              | info | sessionID、agent、model、stage（切换 agent/model 时权限重同步）                                   | 完整 ruleset 追加列表 |
+| native.restore      | info | sessionID、agent、model（非门控模型恢复原生权限）                                                 | —                     |
+| round2.sent         | info | sessionID、partCount、sysInjected(是否含 user system part)                                        | 轮 2 完整 parts       |
+| round2.fail         | warn | sessionID、error（pending 已恢复，ensure 补发兜底）                                               | —                     |
+| verify.passed       | info | sessionID、判别消息 id、特征摘要（首行、letMe 计数）                                              | 判别消息全文          |
+| verify.giveup       | warn | sessionID、已检轮数 N                                                                             | —                     |
+| compaction.rollback | warn | sessionID                                                                                         | —                     |
 
 统一前缀 `dsv4-anchored`，用 `client.app.log(msg, {level, ...fields})` 结构化解构。
 

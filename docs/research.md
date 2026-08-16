@@ -456,6 +456,23 @@ resolvePart → `plugin.trigger("chat.message")` → `updateMessage(info)` +
 `ANCHOR_MARKER`；锚定状态判定改由 **pending 存在性 + 边界后 assistant 消息**
 推导（不再扫标记），幂等标记（`INJECT_MARKER`）只用于轮 2 的 user system part。
 
+### 4.13 agent/model 切换与双实例（round-12 源码事实）
+
+- **agent/model 切换机制**：`session.prompt` 的 `agent`/`model` 是每条 user
+  消息的属性；`createUserMessage` 解析后若与 session 当前值不同会
+  `setAgentModel`（`prompt.ts:635-689`），runLoop 按 `lastUser.agent` /
+  `lastUser.model` 取 agent/system/model（`prompt.ts:1170,1141`）。
+- **跟踪哨兵**：插件用 `__dsv4_agent__` / `__dsv4_model__` 惰性 permission
+  规则记录上次处理值；`findLast` 读取，append-only。
+- **双实例风险**：全局插件、项目 `.opencode/plugins/*.js`、`plugin` 配置同时
+  存在时 opencode 会加载多个插件实例（`plugin/index.ts:97-122` 遍历所有导出，
+  dedupe 只按同引用）。每个实例有独立 probeStore/pendingStore/probeSessions →
+  双探针、重复 toast、甚至嵌套 prompt 卡死。修复：进程级单例
+  `globalThis.__dsv4AnchoredActive`。
+- **SDK 错误静默**：SDK 方法返回 `{data, error}`，若不检查 `.error`，
+  `session.update` 失败会被吞掉 → 哨兵不落库、状态不前进。修复：`adaptClient`
+  统一 `unwrap()` 检查并 throw。
+
 ## 5. 移植方案设计
 
 ### 5.1 状态机（round-7 定案：seeded/unsealed/verified）

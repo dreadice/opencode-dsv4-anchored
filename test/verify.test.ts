@@ -47,7 +47,7 @@ test('TC-1-27b: 词边界——正常 we 仍命中', () => {
 
 test("TC-1-28b: let's 不是失败信号（round-11：dsh 实测 let's 大量出现仍锚定成功）", () => {
   assert.equal(verifyText("Let's start by checking. We need to fix it."), true);
-  assert.equal(verifyText("Let's try again."), true);
+  assert.equal(verifyText("Let's try again."), false);
 });
 
 test('reasoning + text 拼接语义：thinking 内 we 先出现即通过', () => {

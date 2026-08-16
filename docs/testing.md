@@ -8,11 +8,11 @@ deepseek-v4-flash-free`）。
 
 ## 1. 分层与工具
 
-| 层  | 工具                      | mock          | 覆盖                                                                                                           |
-| --- | ------------------------- | ------------- | -------------------------------------------------------------------------------------------------------------- |
-| L1  | `bun test`（零依赖）      | 无            | 门控/阶段/规则构造/判别/幂等/epoch 边界/key                                                                    |
-| L2  | `bun test` + fake client  | 内存 fake SDK | chat.message ensure 状态机矩阵、探针、system.transform、compaction、subagent、D13 锚定轮/轮 2（round-10 新增） |
-| L3  | `opencode run` + 真实 API | 无            | 锚定效果、判别达成、解锁、日志事件链、状态文件、resume、compaction、旁路                                       |
+| 层  | 工具                      | mock          | 覆盖                                                                                                                             |
+| --- | ------------------------- | ------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| L1  | `bun test`（零依赖）      | 无            | 门控/阶段/规则构造/判别/幂等/epoch 边界/key                                                                                      |
+| L2  | `bun test` + fake client  | 内存 fake SDK | chat.message ensure 状态机矩阵、探针、system.transform、compaction、subagent、D13 锚定轮/轮 2、agent/model 切换（round-12 新增） |
+| L3  | `opencode run` + 真实 API | 无            | 锚定效果、判别达成、解锁、日志事件链、状态文件、resume、compaction、旁路                                                         |
 
 架构要求（可测性）：hook 主体为**可注入 client 的纯函数**（如
 `ensureState(client, sessionID, opts)`），`src/index.ts` 的 hook 只是薄包装。
@@ -198,6 +198,8 @@ const messages = [
 | TC-2-30       | ensure 悬挂补发               | pending 存在 + 边界后已有 assistant + 用户新消息        | 补发轮 2；当前消息**正常放行**（不推迟、不 placeholder）                                                                                       |
 | TC-2-31       | idle 防重/无 pending          | idle 但 pending 已清 / 探针会话 idle                    | 不发 prompt（sending 防并发 + pending 判定 + probeSessions 跳过）                                                                              |
 | TC-2-32       | 轮 2 后解锁                   | 轮 2 消息入库（fake prompt 持久化）→ ensure             | stage=seeded + assistant 信号 → unlock；判别窗口含锚定回复                                                                                     |
+| TC-2-33       | 切换 agent（verified）        | verified + 跟踪 build/flash-free，切 explore            | resync：追加 explore ruleset；注入 marker 含 explore+model；stage 保持 verified                                                                |
+| TC-2-34       | 切换非门控模型                | seeded + 跟踪 build/flash-free，model=hy3-free          | `native.restore`：追加 build ruleset + unsealed + 新 model 跟踪；不替换 system/不注入                                                          |
 
 ## 5. L3 真机集成测试（opencode run + opencode/deepseek-v4-flash-free）
 
