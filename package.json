@@ -6,7 +6,6 @@
   "license": "MIT",
   "exports": {
     "./server": {
-      "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
     }
   },
@@ -18,8 +17,9 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "build": "tsc",
-    "test": "node --test \"test/*.test.ts\"",
+    "prebuild": "prettier --write .",
+    "build": "esbuild src/index.ts --bundle --platform=node --format=esm --alias:@=./src --outfile=dist/index.js",
+    "test": "tsx --test \"test/*.test.ts\"",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",
@@ -31,12 +31,14 @@
     "@opencode-ai/plugin": "1.18.18",
     "@opencode-ai/sdk": "1.18.18",
     "@types/bun": "latest",
+    "esbuild": "^0.28.2",
     "eslint": "^10.8.1",
     "eslint-config-google": "^0.14.0",
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-prettier": "^5.5.6",
     "globals": "^17.11.0",
     "prettier": "^3.9.6",
+    "tsx": "^4.23.12",
     "typescript": "^5.9.2",
     "typescript-eslint": "^8.67.0"
   }
