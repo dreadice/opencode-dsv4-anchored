@@ -1,8 +1,16 @@
-# CLI 真机测试手册（opencode run）
+# 真机测试手册（opencode serve + HTTP API）
 
-> 用 `opencode run` 无头跑真实模型验证插件行为。**会花钱**（deepseek 官方
-> v4-pro 计费；flash-free 免费但不出 we 锚定）——按需跑，别乱试。
+> 用真实 opencode 服务器 + 真实模型验证插件行为。**会花钱**（deepseek 官方
+> v4-pro 计费；flash-free 免费——round-10 起实测 flash-free 锚定轮同样出 we
+> 风格，**调试统一用它**）。
 > 术语见 design.md（zero-anchored / seeded / unsealed / verified / giveup）。
+
+## 0. 为什么用 serve 而不是 `opencode run`
+
+`opencode run` 单次模式在 runLoop 完成后立即 dispose 实例（cancel runner）→
+D13 轮 2（插件在 `session.idle` 后自动 prompt）没有机会执行。**serve 模式
+服务器持续运行，全链路（锚定轮 → 轮 2 → 解锁 → 工具 → 判别）可完整验证**，
+且可用 HTTP API 精确控制（创建会话、发消息、查消息、查 permission）。
 
 ## 1. 构建与部署
 
@@ -27,25 +35,51 @@ cp dist/index.js /tmp/opencode/smoke/.opencode/plugins/dsv4-anchored.js
 }
 ```
 
-选项（Dsv4Options）：
+选项（Dsv4Options，round-10 起默认 zero 形态）：
 
-| 选项              | 默认                            | 说明                                                     |
-| ----------------- | ------------------------------- | -------------------------------------------------------- |
-| `models`          | `["deepseek*v4*"]`              | 门控通配符                                               |
-| `whitelist`       | `["bash","str_replace_editor"]` | seeded 白名单；**0 工具 = `[]`**（实证唯一出 we 的形态） |
-| `injectSystem`    | 开启（解锁后注入）              | `false` 关闭注入                                         |
-| `anchorText`      | 无                              | zero 锚定消息（D13 定案后默认启用）                      |
-| `firstTurnFilter` | `{stripPersona: true}`          | 注入前去 opencode 身份句                                 |
+| 选项              | 默认                                  | 说明                                                             |
+| ----------------- | ------------------------------------- | ---------------------------------------------------------------- |
+| `models`          | `["deepseek*v4*"]`                    | 门控通配符                                                       |
+| `whitelist`       | `[]`                                  | seeded 白名单；**0 工具**（实证唯一出 we 的形态，round-10 默认） |
+| `anchorText`      | dsh 原文（"This round is a test..."） | zero 锚定消息；设 `""` 关闭锚定轮                                |
+| `injectSystem`    | 开启（轮 2 注入 user system）         | `false` 关闭注入                                                 |
+| `firstTurnFilter` | `{stripPersona: true}`                | 注入前去 opencode 身份句                                         |
 
 ## 3. 命令模板
 
+### 3.1 serve + HTTP API（推荐，全链路可验证）
+
 ```bash
-# 首轮（新会话）：锚定 + 真实任务
+cd /tmp/opencode/smoke
+opencode serve --port 43210 --print-logs > serve.log 2>&1 &   # 插件从 .opencode/plugins/*.js 加载
+SID=$(curl -s -X POST "http://127.0.0.1:43210/session?directory=/tmp/opencode/smoke" \
+  -H "content-type: application/json" -d '{"title":"t"}' | jq -r .id)
+
+# 发消息（带 model 触发插件；不带 model 也能工作——插件用 output.message.model 兜底）
+curl -s -X POST "http://127.0.0.1:43210/session/$SID/message" -H "content-type: application/json" \
+  -d '{"model":{"providerID":"opencode","modelID":"deepseek-v4-flash-free"},"parts":[{"type":"text","text":"任务"}]}'
+#    ↑ 返回锚定回复；轮 2 在后台自动执行（session.idle → sendRound2）
+
+# 核对
+grep dsv4-anchored serve.log                       # 事件链
+curl -s "http://127.0.0.1:43210/session/$SID/message" | jq   # 消息/工具调用
+curl -s "http://127.0.0.1:43210/session/$SID" | jq .permission # 哨兵/规则
+curl -s --max-time 5 http://127.0.0.1:43210/global/health      # 健康检查
+```
+
+- 模型：`deepseek/deepseek-v4-pro`（官方，出 we 风格但计费）或
+  `opencode/deepseek-v4-flash-free`（免费，round-10 实测锚定轮同样 we——调试用它）
+- `--variant max` 只对 CLI/TUI 有意义（HTTP API 不传 reasoning effort 参数）；
+  HTTP 用默认即可，或经模型配置调
+- 测试后清理：`DELETE /session/:id`
+
+### 3.2 `opencode run`（单次/继续，参考）
+
+```bash
 cd /tmp/opencode/smoke && OPENCODE_LOG_LEVEL=DEBUG opencode run \
   --model deepseek/deepseek-v4-pro --variant max --thinking --auto \
   --print-logs "任务 prompt"
 
-# 继续同一会话（解锁/判别在后续轮）
 opencode run -c --model deepseek/deepseek-v4-pro --variant max --thinking \
   --auto --print-logs "Continue"
 
@@ -53,14 +87,8 @@ opencode run -c --model deepseek/deepseek-v4-pro --variant max --thinking \
 opencode run --model opencode/hy3-free "hi" --print-logs
 ```
 
-参数要点：
-
-- `--variant max`：reasoning effort（deepseek 官方经 `@ai-sdk/openai-compatible`
-  支持 low/medium/high/max）
-- `--thinking`：显示 thinking 块（判别/锚定看这里）
-- `--auto`：自动批准权限（测试用）
-- `--print-logs` + `OPENCODE_LOG_LEVEL=DEBUG`：stderr 打插件日志
-- `-c`：继续上个会话（跨进程，状态从 ruleset/磁盘恢复）
+- **限制**：单次 run 只验证到锚定轮 + 轮 2 发出（round2.sent）；轮 2 的执行
+  需要持续服务器（TUI/serve）——run 命令在 runLoop 完成后 dispose 实例
 
 ## 4. 日志核对（grep dsv4-anchored）
 

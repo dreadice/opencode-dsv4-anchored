@@ -38,8 +38,8 @@ flash-free）、round-9 zero-anchored 时序定案（已落档，**代码未实�
 - `docs/decisions.md` — 决策记录（D1-D12）。**决定清单**（顶部含 round-7 术语表）
 - `docs/testing.md` — **测试用例文档**（L1 单元 / L2 fake client 集成 / L3
   `opencode run` 真机；TC-1-x ~ TC-3-x 用例清单）
-- `docs/cli-testing.md` — **CLI 真机测试手册**（构建部署/配置/命令模板/日志
-  核对/实测结论/花钱注意）
+- `docs/live-testing.md` — **真机测试手册**（serve + HTTP API 为主，构建部署/
+  配置/命令模板/日志核对/实测结论/花钱注意）
 - `docs/plan.md` — **执行计划**（P0~P5 分阶段；TDD 红须编译通过；每模块含
   函数签名/实现细节/验收）
 - 参考仓库（勿提交）：
@@ -535,13 +535,13 @@ tasks.` 到句号，default.txt 第一行有两句——第二句 "Use the instr
 
 1. 实现 D13 时序 —— **已完成（round-10）**，真机全链路验证通过（见下）
 2. 默认配置 zero 形态 —— **已完成**（whitelist `[]` + anchorText 默认 + 注入默认去 persona）
-3. docs 收尾 —— **已完成**（testing TC-3 回填、plan 进度、P4 结论、cli-testing §5.1）
+3. docs 收尾 —— **已完成**（testing TC-3 回填、plan 进度、P4 结论、live-testing §5.1）
 4. 真机验证 D13 全链路 —— **已完成（2026-08-16，`opencode serve` + HTTP API）**：
    锚定轮 we（v4-pro + flash-free）→ 自动轮 2（真实任务 + user system）→ 解锁 →
    工具干活（bash/glob/read）→ `verify.passed`（哨兵 verified 落库）
 5. 移除 ZH_TERMS —— **已完成**（verify.ts/design/testing/decisions）
 
-**真机发现并修复（round-10，详见 cli-testing.md §5.1）**：插件导出必须全为函数
+**真机发现并修复（round-10，详见 live-testing.md §5.1）**：插件导出必须全为函数
 （ZERO_ANCHOR_TEXT 具名导出导致加载失败）；`session.permission` wire 可缺省
 （serve 新会话）→ `?? []`；wire Agent 用 `name` 标识（非 id）→ agent ruleset
 匹配修复；`chat.message` 的 `input.model` 可用 `output.message.model` 兜底。
