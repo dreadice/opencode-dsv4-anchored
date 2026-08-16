@@ -82,3 +82,11 @@ npm run build        # esbuild bundle → dist/index.js
 - **不提交**：`reference/`、`node_modules/`、`dist/`（.gitignore 已含）
 - 做完一个任务提交一个；docs 与代码改动可分开提交
 - 提交前跑 `npm run typecheck` + `npm run test` + `npm run lint`
+
+## 发布
+
+- **每次发布 npm 必须前进版本号（语义化版本，semver）**：
+  `npm version patch/minor/major --no-git-tag-version` → `npm publish`
+  （同版本号无法覆盖发布）
+- 版本号 commit 单独提交；发布后打 tag：`git tag <版本号> <commit>`
+- 本地调试用 `scripts/install-local.sh`（npm 包可能是旧版）
