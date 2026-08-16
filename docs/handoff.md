@@ -7,14 +7,23 @@
 
 项目目录：`/home/liubohan/opencode/dsv4-adapter`（git 已初始化，`.gitignore` 含
 `reference/`、`node_modules/`、`dist/`）。
-当前状态：**P0~P3 完成、P4 主体完成（flash-free 真机验证）**：
+当前状态：**实现基本完成（88 测试全绿）、真机验证完成（deepseek 官方 v4-pro +
+flash-free）、round-9 zero-anchored 时序定案（已落档，**代码未实现**）**：
 
 - 实现：verify/gate/stage/inject/epoch/cache/probe/logger/core/system-transform/
-  compaction/str-replace-editor/sdk-adapter/index（82 测试全绿 + typecheck + lint）
-- 真机：探针捕获→注入→system 替换 minimal→解锁→giveup 全链路通（TC-3-1~6,9 ✅）
-- 已知：flash-free thinking 为 standard-like → 判别 giveup（预期，不锁死）；
-  v4-pro 验证待用户提供 key
-- 安装方式：`dist/index.js` → `.opencode/plugins/`（实测；配置字段 `plugin` 单数）
+  compaction/str-replace-editor/sdk-adapter/bash-description/index
+- 真机（官方 v4-pro + variant max，关键实测）：
+  - minimal + **0 工具** → thinking **we 风格**（"We need answer..."）✅
+  - minimal + **双工具**（含 bash 描述对齐 dsh 后）→ standard-like ❌
+    （opencode 复现不了 dsh Anchored Standard 双工具锚定）
+  - 首轮注入任何内容（即使 stripPersona）→ 破坏 we 锚定
+  - **splice 修复**：`output.system = [...]` 重赋值不生效（plugin.trigger 忽略
+    返回值，request.ts 用局部数组引用）→ 必须 `splice` 原地改——已修复
+- 定案（D13，已写文档，**未实现**）：zero-anchored 锚定轮（0 工具 + 锚定消息
+  synthetic 隐藏）→ 真实消息推迟（pending 存盘）→ 锚定回复落库后 event 自动
+  prompt 轮 2（user system 去 persona + 真实消息）→ 解锁 → 判别
+- 安装方式：`dist/index.js` → `.opencode/plugins/`（实测；配置字段 `plugin`
+  单数；options 用 `plugin: [["路径", {options}]]` 数组形式）
 
 ## 必须首先阅读的文档（已有，勿重复研究）
 
@@ -86,6 +95,16 @@
   **轨迹标记判别**：`reasoning`+`text` 拼接全文 `idx(we系) < idx(let系)` 即通过
   （词表可配置，中文实验词表不稳定 → giveup 不锁死）；
   compaction → 回 seeded（重注入 + 重判别）
+- **D13（round-9，zero-anchored 定案）**：锚定轮（minimal + **0 工具** +
+  **只有锚定消息**，真实消息推迟）→ 锚定回复落库（晋升信号）→ event 自动
+  prompt 轮 2（**user system 去 persona 在前 + 真实消息在后**）→ 解锁 →
+  判别；锚定消息/注入块用 `synthetic: true`（TUI 隐藏、模型可见）；
+  pending 存盘（sessionID → parts）+ prompt 防重 + 重启悬挂补发；
+  完整时序见 design.md §4.5，**代码未实现（下阶段任务）**
+- **round-9 关键 fix**：`system.transform` 必须 `splice` 原地改 output.system
+  （重赋值不生效——plugin.trigger 忽略返回值，request.ts:69-78 用局部数组
+  引用）；`tool.definition` 假 bash（bash 描述 = dsh persistent-bash 原文，
+  execute 不变，`src/bash-description.ts`）；注入时机 = 解锁后（unsealed）
 
 ## ★ round-4 突破（2026-08-16，最后定案）：探针捕获真实 system
 
@@ -464,3 +483,42 @@ decisions.md 术语表 + D5 round-7 修订 + D12、research.md §5.1/§5.2/§5.3
 §5.4/§6/§7、handoff.md 摘要/实现顺序/已知限制。
 
 下一会话从"实现顺序建议"第 1 步（日志模块）开始写 `src/index.ts`。
+
+## 本轮讨论留档（round-9，2026-08-16）：zero-anchored 定案与真机实测
+
+1. **splice 修复（根因）**：`experimental.chat.system.transform` 里
+   `output.system = [...]` 重赋值**不生效**——`plugin.trigger` 只是
+   `fn(input, output)` 后返回 output（`plugin/index.ts:282-296`），request.ts
+   （`request.ts:69-78`）忽略返回值、用**局部 system 数组引用**——必须
+   `splice` 原地改。修复前模型一直看到原生 opencode persona（自称 "I'm
+   opencode, an interactive CLI tool powered by deepseek-v4-pro" 逐字照抄
+   default.txt + system.ts:74）。官方 API 对照实验（curl + minimal system）
+   确认 v4-pro reasoning 为 we 风格。
+2. **实测矩阵（deepseek 官方 v4-pro + variant max）**：0 工具 + minimal →
+   we ✅；双工具（bash 描述对齐 dsh 后仍）→ standard-like ❌；首轮注入
+   任何内容 → 破坏 we。**0 工具是唯一实证 we 形态** → D13 zero-anchored。
+3. **persona 过滤粒度**：stripPersona = 只删身份声明句（`You are opencode,
+   an interactive CLI tool that helps users with software engineering
+   tasks.` 到句号，default.txt 第一行有两句——第二句 "Use the instructions
+   below..." 保留），行为要求/模型名/env/AGENTS/技能/MCP 均保留。
+4. **TUI 关键发现**：`synthetic: true` text part 被 TUI 过滤不显示
+   （`tui/src/routes/session/index.tsx:395,636,841`）、模型可见
+   （`message-v2.ts:198-201` 只滤 ignored/空文本）→ 锚定消息/注入块用
+   synthetic 天然隐藏，无需折叠。
+5. **时序定案（design.md §4.5）**：真实消息推迟 = pending 存盘（sessionID →
+   parts）+ chat.message 首轮替换 parts 为锚定消息 + `event`
+   （message.updated，info.role==="assistant"）自动 `session.prompt` 轮 2
+   （user system 去 persona synthetic + 真实消息，不带 tools）→ 轮 2 消息
+   触发 ensure → unlock。竞态：bypass 不替换/不存 pending；prompt 防重
+   （发前清 pending）；重启悬挂 → ensure 补发。**代码未实现**。
+
+## 待办（新上下文）
+
+1. 实现 D13 时序：pending 存储（存盘）+ chat.message 首轮替换 + `event`
+   message.updated 自动 prompt 轮 2 + ensure 补发 + 测试（fake client 扩展
+   event/prompt 模拟）
+2. 默认配置定 zero 形态（`whitelist: []` + `anchorText` 默认启用 + 注入
+   默认去 persona）
+3. docs 收尾（testing.md TC-3 结果回填 round-9；plan.md 进度；P4 结论：
+   官方端点 v4-pro 0 工具才 we）
+4. 真机验证 D13 全链路（锚定轮 we → 自动轮 2 → 解锁 → 判别）
