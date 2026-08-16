@@ -4,9 +4,27 @@
   "description": "opencode plugin: anchored tool bootstrap for DeepSeek V4 (port of dsh-anchored-standard)",
   "type": "module",
   "license": "MIT",
+  "keywords": [
+    "opencode",
+    "plugin",
+    "deepseek",
+    "dsv4",
+    "anchored",
+    "zero-anchored",
+    "dsh-anchored-standard"
+  ],
+  "author": "dreadice",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/dreadice/opencode-dsv4-anchored.git"
+  },
+  "homepage": "https://github.com/dreadice/opencode-dsv4-anchored",
+  "bugs": {
+    "url": "https://github.com/dreadice/opencode-dsv4-anchored/issues"
+  },
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org",
+    "access": "public"
   },
   "exports": {
     "./server": {
