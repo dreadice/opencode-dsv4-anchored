@@ -51,6 +51,8 @@ const REAL_SYSTEM = [
   'You are opencode, an interactive CLI tool that helps users with software engineering tasks.',
   'Use the instructions below to assist the user.',
   '',
+  'IMPORTANT: You must NEVER generate or guess URLs.',
+  '',
   'Here is some useful information about the environment:',
   '<env>working dir /proj</env>',
   '',
@@ -61,12 +63,17 @@ const REAL_SYSTEM = [
   '<available_skills>skill list</available_skills>',
 ].join('\n');
 
-test('filterFirstTurnSystem：过滤 opencode persona 段（保留 Instructions/Skills）', () => {
+test('filterFirstTurnSystem：stripPersona 只滤身份句，保留行为要求/env/AGENTS/Skills', () => {
   const out = filterFirstTurnSystem(REAL_SYSTEM, {stripPersona: true});
-  assert.ok(!out.includes('You are opencode,'), 'persona 段应被过滤');
+  assert.ok(!out.includes('You are opencode,'), '身份声明应被滤掉');
+  assert.ok(
+    out.includes('IMPORTANT: You must NEVER generate'),
+    '行为要求应保留'
+  );
+  assert.ok(out.includes('<env>working dir /proj</env>'), 'env 应保留');
   assert.ok(
     out.includes('Instructions from: /proj/AGENTS.md'),
-    'Instructions 段保留'
+    'AGENTS 段保留'
   );
   assert.ok(out.includes('Skills provide specialized'), 'Skills 段保留');
 });
@@ -80,7 +87,11 @@ test('filterFirstTurnSystem：D11 全滤（persona+instructions+skills）', () =
   assert.ok(!out.includes('You are opencode,'));
   assert.ok(!out.includes('Instructions from:'));
   assert.ok(!out.includes('Skills provide specialized'));
-  assert.ok(out.trim() === '', '全滤后仅剩空段');
+  assert.ok(
+    out.includes('IMPORTANT: You must NEVER generate'),
+    '行为要求仍保留'
+  );
+  assert.ok(out.includes('<env>'), 'env 仍保留');
 });
 
 test('filterFirstTurnSystem：无过滤配置原样返回', () => {

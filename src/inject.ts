@@ -45,7 +45,8 @@ export function buildInjectionPart(
 }
 
 export type FirstTurnFilter = {
-  /** 过滤 opencode 自带 persona/系统指令段（`You are opencode, ...` 开头）。 */
+  /** 滤掉 opencode 身份声明句（`You are opencode, ...` 开篇），保留行为要求/
+   * 工具政策/模型名/env 等其余内容。 */
   stripPersona?: boolean;
   /** 过滤 AGENTS.md/CLAUDE.md/CONTEXT.md 段（`Instructions from:` 开头，D11）。 */
   stripInstructions?: boolean;
@@ -56,6 +57,11 @@ export type FirstTurnFilter = {
 const SEGMENT_PATTERN =
   /\n(?=Instructions from: |Skills provide specialized instructions|You are opencode,)/;
 
+/** 删除开篇身份声明句（"You are opencode, ..." 到换行），保留段内行为要求。 */
+function stripIdentity(text: string): string {
+  return text.replace(/^You are opencode,[^\n]*\n+/, '');
+}
+
 /** 首轮注入前的选择性剥离（D11 备选）：按稳定标记切段，滤掉指定段。 */
 export function filterFirstTurnSystem(
   system: string,
@@ -65,17 +71,17 @@ export function filterFirstTurnSystem(
     return system;
   return system
     .split(SEGMENT_PATTERN)
-    .filter(seg => {
-      if (filter.stripPersona && seg.startsWith('You are opencode,'))
-        return false;
+    .map(seg => {
       if (filter.stripInstructions && seg.startsWith('Instructions from:'))
-        return false;
+        return '';
       if (
         filter.stripSkills &&
         seg.startsWith('Skills provide specialized instructions')
       )
-        return false;
-      return true;
+        return '';
+      if (filter.stripPersona) return stripIdentity(seg);
+      return seg;
     })
+    .filter(seg => seg !== '')
     .join('\n');
 }
