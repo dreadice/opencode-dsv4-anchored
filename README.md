@@ -32,8 +32,9 @@
 
 ## 安装
 
-三种方式任选其一（**互斥，勿同时使用**——`.opencode/plugins/*.js` 与
-`plugin` 配置同时存在会双加载，chat.message 触发两次）：
+opencode 支持两种插件加载方式（官方文档：本地文件 / npm 包），任选其一
+（**互斥，勿同时使用**——`.opencode/plugins/*.js` 与 `plugin` 配置同时存在
+会双加载，chat.message 触发两次）：
 
 **1. npm 包（推荐，开箱即用）**——opencode.json：
 
@@ -43,32 +44,12 @@
 }
 ```
 
-**2. 本地**：
+**2. 本地文件**：
 
 ```bash
 npm run build                 # esbuild bundle → dist/index.js
 cp dist/index.js <项目>/.opencode/plugins/dsv4-anchored.js
-# 或把仓库路径写进配置：
-# "plugin": [["/path/to/opencode-dsv4-anchored", {}]]
 ```
-
-**3. Git 引用**——先跑一次预装脚本，再用配置引用：
-
-```bash
-bash scripts/install-git-cache.sh          # clone + 构建 + 预装到 opencode 缓存
-```
-
-```json
-{
-  "plugin": [["github:dreadice/opencode-dsv4-anchored", {}]]
-}
-```
-
-> 说明（2026-08-16 实测）：opencode v1.18.18 的插件安装器（`Npm.add`/Arborist）
-> 对 git spec 安装失败——缓存目录创建但为空、插件静默不加载（其运行时为
-> `bun build --compile`，Arborist 的 git 安装路径在其编译产物中失效；registry
-> 安装正常）。**加载环节本身没问题**，预装到缓存目录后即可正常使用。
-> 更新版本时重跑脚本即可。
 
 > 要求：opencode `>= 1.18.18`（`engines.opencode` 兼容检查）。
 
