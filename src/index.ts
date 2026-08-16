@@ -1,56 +1,76 @@
-import type {Plugin} from '@opencode-ai/plugin';
-import type {Model} from '@opencode-ai/sdk/v2';
+import type {Plugin, PluginOptions} from '@opencode-ai/plugin';
+import {ensureState, type EnsureOptions} from '@/core';
+import {systemTransform} from '@/system-transform';
+import {compacting} from '@/compaction';
+import {strReplaceEditor} from '@/str-replace-editor';
+import {createProbeStore} from '@/probe';
+import {makeLogger} from '@/logger';
+import {DEFAULT_TERMS, type VerifyTerms} from '@/verify';
+import {adaptClient, adaptLog} from '@/sdk-adapter';
 
-const API = {
-  id: 'deepseek',
-  url: 'https://api.deepseek.com',
-  npm: '@ai-sdk/deepseek',
+type Dsv4Options = {
+  models?: string[];
+  whitelist?: string[];
+  verifyN?: number;
+  verifyTerms?: VerifyTerms;
+  probeTtlMs?: number;
+  cacheDir?: string;
 };
 
-const DEEPSEEK_V4_MODELS: Record<string, Model> = {
-  'deepseek-v4-flash-free': {
-    id: 'deepseek-v4-flash-free',
-    providerID: 'deepseek',
-    api: API,
-    name: 'DeepSeek V4 Flash Free',
-    family: 'deepseek-v4',
-    capabilities: {
-      temperature: true,
-      reasoning: false,
-      attachment: false,
-      toolcall: true,
-      input: {text: true, audio: false, image: false, video: false, pdf: false},
-      output: {
-        text: true,
-        audio: false,
-        image: false,
-        video: false,
-        pdf: false,
-      },
-      interleaved: false,
-    },
-    cost: {input: 0, output: 0, cache: {read: 0, write: 0}},
-    limit: {context: 128_000, output: 8_192},
-    status: 'active',
-    options: {},
-    headers: {},
-    release_date: '2026-08-16',
-  },
-};
-
-export const Dsv4Anchored: Plugin = async ({
-  client,
-  project,
-  directory,
-  worktree,
-  $,
-}) => {
+function resolveOptions(options?: PluginOptions): EnsureOptions {
+  const opts = (options ?? {}) as Dsv4Options;
   return {
-    provider: {
-      id: 'deepseek',
-      models: async provider => {
-        return DEEPSEEK_V4_MODELS;
-      },
+    models: opts.models ?? ['deepseek*v4*'],
+    whitelist: opts.whitelist ?? ['bash', 'str_replace_editor'],
+    verifyN: opts.verifyN ?? 3,
+    verifyTerms: opts.verifyTerms ?? DEFAULT_TERMS,
+    probeTtlMs: opts.probeTtlMs ?? 300_000,
+  };
+}
+
+export const Dsv4Anchored: Plugin = async ({client}, options) => {
+  const sdk = adaptClient(client);
+  const eopts = resolveOptions(options);
+  const probeStore = createProbeStore();
+  const probeSessions = new Map<string, string>();
+  const giveupOnce = new Set<string>();
+  const logger = makeLogger(adaptLog(client));
+
+  return {
+    tool: {
+      str_replace_editor: strReplaceEditor,
+    },
+    'chat.message': async (input, output) => {
+      if (!input.model) return;
+      await ensureState(
+        {
+          client: sdk,
+          options: eopts,
+          logger,
+          probeStore,
+          probeSessions,
+          giveupOnce,
+        },
+        {
+          sessionID: input.sessionID,
+          model: input.model,
+          messageID: input.messageID ?? '',
+          outputParts: output.parts,
+        }
+      );
+    },
+    'experimental.chat.system.transform': async (input, output) => {
+      await systemTransform(
+        {client: sdk, probeStore, probeSessions, options: eopts, logger},
+        {
+          sessionID: input.sessionID,
+          model: {providerID: input.model.providerID, modelID: input.model.id},
+        },
+        output
+      );
+    },
+    'experimental.session.compacting': async input => {
+      await compacting({client: sdk, logger}, input.sessionID);
     },
   };
 };

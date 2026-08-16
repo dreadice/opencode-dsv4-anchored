@@ -1,3 +1,5 @@
+import {readFile, writeFile, mkdir} from 'node:fs/promises';
+import {dirname} from 'node:path';
 import {cacheKey} from '@/cache';
 /** 探针终止消息：必须避开 opencode retry 禁词（`retry.ts:33-40`），否则会被重试。 */
 export const PROBE_THROW_MESSAGE = 'DSV4 probe: capture complete';
@@ -137,6 +139,28 @@ export function captureProbeSystem(
   system: string
 ): void {
   store.map.set(key, {status: 'ok', system, ts: Date.now()});
+}
+
+/** 从磁盘加载探针缓存（跨重启不重探；无文件/损坏 → 空缓存）。 */
+export async function loadProbeStore(filePath: string): Promise<ProbeStore> {
+  const store = createProbeStore();
+  try {
+    const raw = await readFile(filePath, 'utf8');
+    const entries = JSON.parse(raw) as Array<[string, ProbeCacheEntry]>;
+    for (const [key, value] of entries) store.map.set(key, value);
+  } catch {
+    // 首次运行或文件损坏：空缓存
+  }
+  return store;
+}
+
+/** 保存探针缓存到磁盘（fire-and-forget 调用）。 */
+export async function saveProbeStore(
+  store: ProbeStore,
+  filePath: string
+): Promise<void> {
+  await mkdir(dirname(filePath), {recursive: true});
+  await writeFile(filePath, JSON.stringify([...store.map.entries()], null, 2));
 }
 
 /** 探针 key：复用 cacheKey 语义（directory/agent/modelID/日期）。 */
