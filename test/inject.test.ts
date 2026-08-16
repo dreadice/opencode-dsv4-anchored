@@ -2,7 +2,8 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {
   INJECT_MARKER,
-  hasInjectionMarker,
+  injectionMarkerFor,
+  hasInjectionMarkerFor,
   buildInjectionPart,
   filterFirstTurnSystem,
 } from '@/inject';
@@ -16,22 +17,27 @@ const textPart = (text: string, extra: object = {}) => ({
   ...extra,
 });
 
-test('TC-1-28: 含幂等标记 → true', () => {
-  const parts = [
-    textPart('hello'),
-    textPart(`${INJECT_MARKER}\nsystem content`),
-  ];
-  assert.equal(hasInjectionMarker(parts), true);
+test('TC-1-28: 含当前 agent/model 幂等标记 → true', () => {
+  const marker = injectionMarkerFor('build', 'deepseek-v4-flash-free');
+  const parts = [textPart('hello'), textPart(`${marker}\nsystem content`)];
+  assert.equal(
+    hasInjectionMarkerFor(parts, 'build', 'deepseek-v4-flash-free'),
+    true
+  );
 });
 
-test('TC-1-29: 无幂等标记 → false', () => {
+test('TC-1-29: 无当前 agent/model 幂等标记 → false', () => {
   const parts = [textPart('hello'), textPart('world')];
-  assert.equal(hasInjectionMarker(parts), false);
+  assert.equal(
+    hasInjectionMarkerFor(parts, 'build', 'deepseek-v4-flash-free'),
+    false
+  );
 });
 
 test('TC-1-30: 注入 part 字段完整（type/synthetic/id 前缀/标记+system）', () => {
   const system = 'line1\nline2';
-  const part = buildInjectionPart(system, 'ses_1', 'msg_1');
+  const marker = injectionMarkerFor('build', 'deepseek-v4-flash-free');
+  const part = buildInjectionPart(system, 'ses_1', 'msg_1', marker);
   assert.equal(part.type, 'text');
   assert.equal(part.synthetic, true);
   assert.ok(part.id.startsWith('prt_'), `id 应以 prt_ 开头: ${part.id}`);
@@ -42,8 +48,9 @@ test('TC-1-30: 注入 part 字段完整（type/synthetic/id 前缀/标记+system
 });
 
 test('TC-1-30b: 注入 part id 唯一（两次生成不同）', () => {
-  const a = buildInjectionPart('s', 'ses_1', 'msg_1');
-  const b = buildInjectionPart('s', 'ses_1', 'msg_1');
+  const marker = injectionMarkerFor('build', 'deepseek-v4-flash-free');
+  const a = buildInjectionPart('s', 'ses_1', 'msg_1', marker);
+  const b = buildInjectionPart('s', 'ses_1', 'msg_1', marker);
   assert.notEqual(a.id, b.id);
 });
 

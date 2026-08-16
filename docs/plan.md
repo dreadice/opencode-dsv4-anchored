@@ -164,15 +164,16 @@ P0 基础设施 ─▶ P1 L1 纯函数+TDD ─▶ P2 L2 fake client 集成 ─�
 ### 1.4 `src/inject.ts` + `test/inject.test.ts`（TC-1-28~30）
 
 - `INJECT_MARKER = "[dsv4-anchored:injected]"`
-- `hasInjectionMarker(parts): boolean`：任一 `type==="text"` 的 part 的 `text`
-  含 INJECT_MARKER
-- `buildInjectionPart(system, sessionID, messageID): Part`：
+- `injectionMarkerFor(agent, modelID): string`：`INJECT_MARKER + ":" + agent + ":" + modelID`
+- `hasInjectionMarkerFor(parts, agent, modelID): boolean`：任一 `type==="text"`
+  的 part 的 `text` 含当前 agent/model 指纹标记
+- `buildInjectionPart(system, sessionID, messageID, marker): Part`：
   `{ id: newPartId(), sessionID, messageID, type:"text",
-text: \`${INJECT_MARKER}\n${system}\`, synthetic: true }`
+text: \`${marker}\n${system}\`, synthetic: true }`
 - `newPartId(): string`：`"prt_" + Date.now().toString(16) + 随机 hex`（参考
   `id/id.ts` 的 `prt_<hex>` 格式，保证唯一）
-- 测试：1-28 含标记→true、1-29 无→false、1-30 part 字段断言（type/synthetic/
-  id 前缀 prt_/text 含标记与 system）
+- 测试：1-28 含当前指纹标记→true、1-29 无→false、1-30 part 字段断言（type/
+  synthetic/id 前缀 prt_/text 含标记与 system）
 
 ### 1.5 `src/epoch.ts` + `test/epoch.test.ts`（TC-1-31~34）
 
@@ -245,8 +246,9 @@ ctx = { client, options, probe: {cache, inFlight}, logger, probeSessions }
    miss → runProbe(...)（2.4）；failed → {action:"bypass"}
 3. session = client.session.get(sessionID)         // directory/parentID/permission
 4. stage = getStage(session.permission)
-5. 注入：hasInjectionMarker(历史 parts) === false → outputParts.unshift(
-   buildInjectionPart(sys, sessionID, messageID))  // pristine 与 compaction 重注入
+5. 注入：hasInjectionMarkerFor(历史 parts, agent, modelID) === false →
+   outputParts.unshift(buildInjectionPart(sys, sessionID, messageID,
+   injectionMarkerFor(agent, modelID)))  // pristine 与 compaction 重注入
 6. stage==="pristine" → 追加 seededRules → 哨兵 seeded；日志 chat.message
 7. stage==="seeded" || "unsealed"：
    a. 解锁：边界后存在 assistant 消息/工具调用 && stage==="seeded" →

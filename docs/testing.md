@@ -95,11 +95,11 @@ resume：`opencode run -s <sessionID> "继续"`；门控对照：`--model anthro
 
 ### 3.5 幂等标记 / 注入 part
 
-| 用例    | 函数                                               | 输入                               | 期望                                                                                                 |
-| ------- | -------------------------------------------------- | ---------------------------------- | ---------------------------------------------------------------------------------------------------- |
-| TC-1-28 | `hasInjectionMarker(parts)`                        | 含 `[dsv4-anchored:injected]` 文本 | true                                                                                                 |
-| TC-1-29 | `hasInjectionMarker(parts)`                        | 无标记                             | false                                                                                                |
-| TC-1-30 | `buildInjectionPart(system, sessionID, messageID)` | system 全文                        | part：`type:"text"`、`synthetic:true`、text=标记+system、id 以 `prt_` 开头、sessionID/messageID 正确 |
+| 用例    | 函数                                                       | 输入                                        | 期望                                                                                                 |
+| ------- | ---------------------------------------------------------- | ------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| TC-1-28 | `hasInjectionMarkerFor(parts, agent, modelID)`             | 含 `[dsv4-anchored:injected]:agent:modelID` | true                                                                                                 |
+| TC-1-29 | `hasInjectionMarkerFor(parts, agent, modelID)`             | 无对应标记                                  | false                                                                                                |
+| TC-1-30 | `buildInjectionPart(system, sessionID, messageID, marker)` | system 全文 + marker                        | part：`type:"text"`、`synthetic:true`、text=标记+system、id 以 `prt_` 开头、sessionID/messageID 正确 |
 
 ### 3.6 epoch 边界 `lastCompactionBoundary(messages)`
 

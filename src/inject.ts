@@ -27,13 +27,6 @@ export function hasMarker(
   );
 }
 
-/** 历史 parts 中是否已有注入标记（system 注入幂等）。 */
-export function hasInjectionMarker(
-  parts: Array<{type: string; text?: unknown}>
-): boolean {
-  return hasMarker(parts, INJECT_MARKER);
-}
-
 /** 当前 agent/model 对应的注入标记（切换 agent/model 后旧标记不应阻止新注入）。 */
 export function injectionMarkerFor(agent: string, modelID: string): string {
   return `${INJECT_MARKER}:${agent}:${modelID}`;
@@ -53,7 +46,7 @@ export function buildInjectionPart(
   content: string,
   sessionID: string,
   messageID: string,
-  marker: string = INJECT_MARKER
+  marker: string
 ): InjectionPart {
   return {
     id: newPartId(),
