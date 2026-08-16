@@ -3,10 +3,17 @@ import {ensureState, type EnsureOptions} from '@/core';
 import {systemTransform} from '@/system-transform';
 import {compacting} from '@/compaction';
 import {strReplaceEditor} from '@/str-replace-editor';
-import {createProbeStore} from '@/probe';
+import {loadProbeStore, saveProbeStore} from '@/probe';
 import {makeLogger} from '@/logger';
 import {DEFAULT_TERMS, type VerifyTerms} from '@/verify';
 import {adaptClient, adaptLog} from '@/sdk-adapter';
+import {join} from 'node:path';
+import {homedir} from 'node:os';
+
+const DEFAULT_CACHE_FILE = join(
+  homedir(),
+  '.local/share/opencode/dsv4-anchored/probe-cache.json'
+);
 
 type Dsv4Options = {
   models?: string[];
@@ -31,7 +38,9 @@ function resolveOptions(options?: PluginOptions): EnsureOptions {
 export const Dsv4Anchored: Plugin = async ({client}, options) => {
   const sdk = adaptClient(client);
   const eopts = resolveOptions(options);
-  const probeStore = createProbeStore();
+  const cacheFile =
+    ((options ?? {}) as Dsv4Options).cacheDir ?? DEFAULT_CACHE_FILE;
+  const probeStore = await loadProbeStore(cacheFile);
   const probeSessions = new Map<string, string>();
   const giveupOnce = new Set<string>();
   const logger = makeLogger(adaptLog(client));
@@ -58,6 +67,7 @@ export const Dsv4Anchored: Plugin = async ({client}, options) => {
           outputParts: output.parts,
         }
       );
+      void saveProbeStore(probeStore, cacheFile);
     },
     'experimental.chat.system.transform': async (input, output) => {
       await systemTransform(
