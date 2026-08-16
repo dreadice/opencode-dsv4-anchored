@@ -25,7 +25,7 @@ function makeCtx(): { ctx: EnsureCtx; client: ReturnType<typeof createFakeClient
     options: OPTIONS,
     logger: makeLogger(client.app.log.bind(client.app), { debugEnabled: false }),
     probeStore: createProbeStore(),
-    probeSessions: new Set(),
+    probeSessions: new Map(),
     giveupOnce: new Set(),
   }
   return { ctx, client }

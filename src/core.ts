@@ -48,7 +48,7 @@ export type EnsureCtx = {
   options: EnsureOptions
   logger: Logger
   probeStore: ProbeStore
-  probeSessions: Set<string>
+  probeSessions: Map<string, string>
   giveupOnce: Set<string>
 }
 

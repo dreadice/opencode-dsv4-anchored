@@ -63,14 +63,14 @@ export async function runProbe(
     agent: string;
     model: {providerID: string; modelID: string};
     directory: string;
-    probeSessions: Set<string>;
+    probeSessions: Map<string, string>;
   }
 ): Promise<void> {
   const {id} = await client.session.create({
     query: {directory: opts.directory},
     body: {title: `dsv4-probe-${key.length}`},
   });
-  opts.probeSessions.add(id);
+  opts.probeSessions.set(id, key);
   try {
     await client.session.prompt({
       path: {id},
@@ -102,7 +102,7 @@ export async function getOrProbe(
     agent: string;
     model: {providerID: string; modelID: string};
     directory: string;
-    probeSessions: Set<string>;
+    probeSessions: Map<string, string>;
   }
 ): Promise<{system?: string; bypass: boolean}> {
   const cached = store.map.get(key);
