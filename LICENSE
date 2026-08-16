@@ -1,0 +1,46 @@
+MIT License
+
+Copyright (c) 2026 dreadice
+
+Portions Copyright (c) 2025 opencode
+Portions Copyright (c) 2026 DeepSeek
+Portions Copyright (c) 2026 xiaobright
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+---
+
+## 引用内容版权归属声明
+
+本软件引用了以下上游项目的部分内容，其版权分别归各自作者所有，各自按其
+许可证授权使用（均为 MIT License）；本声明不影响上游作者的原始版权：
+
+- **opencode**（Copyright (c) 2025 opencode）——插件 API 与运行时机制的
+  移植与适配（Hook 用法、permission ruleset 语义、会话/事件模型等），
+  源码依据见 `docs/research.md` 与 `reference/opencode/`（只读参考，不随
+  本项目分发）。
+- **DeepSeek**（Copyright (c) 2026 DeepSeek，`deepseek-harness`）——官方
+  Minimal preset 的系统提示词形态、`str_replace_editor` 工具 schema 参考，
+  源码依据见 `reference/deepseek-harness/`（只读参考，不随本项目分发）。
+- **xiaobright**（Copyright (c) 2026 xiaobright，`dsh-anchored-standard`）——
+  首轮轨迹约束 + 逐步解锁方法、zero-anchored 锚定消息原文（插件默认的
+  `anchorText`）、工具 bootstrap 与 verify 清单思路，源码依据见
+  `reference/dsh-anchored-standard/`（只读参考，不随本项目分发）。
+
+本项目自身代码（`src/`、`test/`、`docs/`）按上述 MIT 许可证授权。
