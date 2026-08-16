@@ -98,9 +98,38 @@ npm run build        # esbuild bundle → dist/index.js
 ## 发布
 
 - **每次发布 npm 必须前进版本号（语义化版本，semver）**：
-  `npm version patch/minor/major` → `npm publish`
-  （同版本号无法覆盖发布）
-- **`npm version` 自动 commit + 打 git tag**（tag 名与版本号一致，无 v 前缀，
-  由 `.npmrc` 的 `tag-version-prefix=` 配置）——无需手动 commit/tag；
-  发布后 `git push --tags` 推送
+  用 `--no-git-tag-version` 只改版本号，**不自动 commit/tag**（手动控制提交与 tag）：
+  ```bash
+  npm version patch --no-git-tag-version   # 只改 package.json/package-lock.json
+  npm run build                            # dist 内嵌新版本
+  npm publish
+  git add package.json package-lock.json
+  git commit -m "chore: 发布 v0.1.x"
+  git tag 0.1.x                            # 手动 tag，tag 名与版本号一致
+  git push
+  git push --tags
+  ```
 - 本地调试用 `scripts/install-local.sh`（npm 包可能是旧版）
+
+## 全局/本地插件更新
+
+- npm 发布流程：`npm version patch --no-git-tag-version`（只改版本号）→
+  `npm run build`（dist 内嵌新版本）→ `npm publish` → 手动 `git commit` +
+  `git tag` + `git push --tags`。
+- 如果同时维护全局/本地插件副本（`~/.config/opencode/plugins/` 或项目
+  `.opencode/plugins/`）：**必须等版本号前进并 build 之后**再手动复制：
+  ```bash
+  npm version patch --no-git-tag-version
+  npm run build
+  npm publish
+  git add package.json package-lock.json
+  git commit -m "chore: 发布 v0.1.x"
+  git tag 0.1.x
+  git push
+  git push --tags
+  cp dist/index.js ~/.config/opencode/plugins/dsv4-anchored.js
+  ```
+  不要在发布新版本前把旧 dist 复制过去。
+- 仅调试/本地验证时可直接 `npm run build && cp`，不要求先发版。
+- 手动部署后，启动 opencode 应看到 `plugin.loaded ... version=<当前版本>`；
+  如果版本不符，说明全局插件是旧文件，先重新 `cp` 或改用 npm 安装。
