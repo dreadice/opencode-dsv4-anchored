@@ -72,14 +72,43 @@ opencode 会读取以下位置的配置文件，任选其一即可：
 
 ### 方式二：使用本地文件
 
-先构建插件，再复制到项目的插件目录：
+先构建插件：
 
 ```bash
 npm run build
+```
+
+然后有两种用法：
+
+**1. 默认行为：放到自动发现目录**
+
+把 `dist/index.js` 复制到项目的插件目录：
+
+```bash
 cp dist/index.js <项目>/.opencode/plugins/dsv4-anchored.js
 ```
 
-> 注意：两种安装方式任选其一，不要同时使用，否则可能造成插件重复加载。
+opencode 会自动加载，但这种方式不能传配置项，只能使用默认配置。
+
+**2. 需要传配置项：用 `plugin` 配置指定文件路径**
+
+把文件放到任意位置（建议不要放在 `.opencode/plugins/`，避免重复加载），然后在 `opencode.json` 里写：
+
+```json
+{
+  "plugin": [
+    [
+      "/绝对路径/dsv4-anchored.js",
+      {
+        "skipSubagents": true,
+        "injectSystemFirst": true
+      }
+    ]
+  ]
+}
+```
+
+> 注意：两种安装方式任选其一，不要同时使用。本地文件也不要同时“自动发现”和“在 `plugin` 配置里指定”，否则可能造成插件重复加载。
 
 ---
 
