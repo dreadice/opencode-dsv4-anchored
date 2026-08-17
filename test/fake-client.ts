@@ -85,6 +85,16 @@ export const EXPLORE_AGENT: FakeAgent = {
   ],
 };
 
+export const CUSTOM_AGENT: FakeAgent = {
+  id: 'custom',
+  name: 'custom',
+  prompt: 'You are a custom test agent.',
+  permission: [
+    {permission: '*', pattern: '*', action: 'allow'},
+    {permission: 'doom_loop', pattern: '*', action: 'ask'},
+  ],
+};
+
 export function createFakeClient(opts?: {
   model?: {id: string; providerID: string};
 }): FakeClient {
@@ -149,7 +159,7 @@ export function createFakeClient(opts?: {
     },
     app: {
       async agents() {
-        return [BUILD_AGENT, EXPLORE_AGENT];
+        return [BUILD_AGENT, EXPLORE_AGENT, CUSTOM_AGENT];
       },
       log(msg, opts) {
         logs.push({msg, ...opts});
@@ -204,7 +214,11 @@ export function addSession(
 
 export const reasoning = (text: string) => ({type: 'reasoning', text});
 export const textPart = (text: string) => ({type: 'text', text});
-export const toolPart = (tool: string) => ({type: 'tool', tool});
+export const toolPart = (tool: string, extra: object = {}) => ({
+  type: 'tool',
+  tool,
+  ...extra,
+});
 export const compactionPart = (tailStartId?: string) => ({
   type: 'compaction',
   ...(tailStartId ? {tail_start_id: tailStartId} : {}),
