@@ -87,19 +87,20 @@ cp dist/index.js <项目>/.opencode/plugins/dsv4-anchored.js
 
 插件提供以下配置项：
 
-| 配置项            | 默认值                                                                            | 作用                                                                 |
-| ----------------- | --------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
-| `models`          | `["deepseek*v4*"]`                                                                | 只有匹配这些模型名时插件才会生效                                     |
-| `whitelist`       | `[]`                                                                              | 第一轮允许使用的工具白名单。默认是空，也就是第一轮不开放任何工具     |
-| `anchorText`      | `"This round is a test. Tools are not open yet; all tools will open next round."` | 第一轮展示给模型的固定消息。设为 `""` 可关闭锚定轮                   |
-| `injectSystem`    | 启用                                                                              | 第二轮是否把保存的完整系统提示词注入回去                             |
-| `firstTurnFilter` | `{stripPersona: true}`                                                            | 注入系统提示词前，是否去掉 opencode 自带的身份描述                   |
-| `verifyN`         | `3`                                                                               | 判断锚定是否成功时，最多检查前几轮回复                               |
-| `verifyTerms`     | `{"we": ["we need", "we"], "let": ["let me"]}`                                    | 用于判断锚定成功的英文关键词                                         |
-| `toast`           | 启用                                                                              | 是否在 opencode 界面显示插件运行提示                                 |
-| `skipSubagents`   | `false`                                                                           | 是否跳过子代理会话。默认不跳过；设为 `true` 可让子代理不经过锚定流程 |
-| `probeTtlMs`      | `300000`                                                                          | 探针失败后，多久内不再重试                                           |
-| `cacheDir`        | `~/.local/share/opencode/dsv4-anchored/`                                          | 插件状态和探针缓存的存放目录                                         |
+| 配置项              | 默认值                                                                            | 作用                                                                                                                                          |
+| ------------------- | --------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| `models`            | `["deepseek*v4*"]`                                                                | 只有匹配这些模型名时插件才会生效                                                                                                              |
+| `whitelist`         | `[]`                                                                              | 第一轮允许使用的工具白名单。默认是空，也就是第一轮不开放任何工具                                                                              |
+| `anchorText`        | `"This round is a test. Tools are not open yet; all tools will open next round."` | 第一轮展示给模型的固定消息。设为 `""` 可关闭锚定轮                                                                                            |
+| `injectSystem`      | 启用                                                                              | 第二轮是否把保存的完整系统提示词注入回去                                                                                                      |
+| `injectSystemFirst` | `false`                                                                           | 开启后恢复“变更前”的单条消息实现：轮 2 把 user system 和真实任务合并成同一条消息且 system 在前。指令遵循更强，但可能导致会话摘要/标题生成错误 |
+| `firstTurnFilter`   | `{stripPersona: true}`                                                            | 注入系统提示词前，是否去掉 opencode 自带的身份描述                                                                                            |
+| `verifyN`           | `3`                                                                               | 判断锚定是否成功时，最多检查前几轮回复                                                                                                        |
+| `verifyTerms`       | `{"we": ["we need", "we"], "let": ["let me"]}`                                    | 用于判断锚定成功的英文关键词                                                                                                                  |
+| `toast`             | 启用                                                                              | 是否在 opencode 界面显示插件运行提示                                                                                                          |
+| `skipSubagents`     | `false`                                                                           | 是否跳过子代理会话。默认不跳过；设为 `true` 可让子代理不经过锚定流程                                                                          |
+| `probeTtlMs`        | `300000`                                                                          | 探针失败后，多久内不再重试                                                                                                                    |
+| `cacheDir`          | `~/.local/share/opencode/dsv4-anchored/`                                          | 插件状态和探针缓存的存放目录                                                                                                                  |
 
 ### 配置示例
 
@@ -115,6 +116,7 @@ cp dist/index.js <项目>/.opencode/plugins/dsv4-anchored.js
         "whitelist": [],
         "anchorText": "This round is a test. Tools are not open yet; all tools will open next round.",
         "injectSystem": true,
+        "injectSystemFirst": false,
         "firstTurnFilter": {
           "stripPersona": true
         },
@@ -194,6 +196,29 @@ grep dsv4-anchored ~/.local/share/opencode/log/opencode.log
 
 - 多个插件同时修改系统提示词时，后注册的插件会生效；
 - 锚定轮期间工具会被临时隐藏，第二轮会按 agent 规则恢复。
+
+### 为什么默认先发真实消息，再发系统提示词？
+
+这是为了避免标题/摘要生成看到注入的 system part 后产生类似 `<tool_calls>` 的错误。
+
+如果你觉得指令遵循不够强，可以开启：
+
+```json
+{
+  "plugin": [
+    [
+      "@dreadice/opencode-dsv4-anchored",
+      {
+        "injectSystemFirst": true
+      }
+    ]
+  ]
+}
+```
+
+开启后相当于恢复“变更前”的单条消息实现：user system 和真实任务合并成同一条消息，并且 system 在最前。
+
+但请注意：开启后 system part 会放在同一条消息的最前面，可能导致会话摘要/标题生成错误。默认关闭。
 
 ### 子代理会受影响吗？
 

@@ -108,6 +108,43 @@ test('TC-2-28: session.idle → 轮 2 自动发出（先真实任务 noReply，�
   );
 });
 
+test('injectSystemFirst:true 时轮 2 合并为一条消息且 system 在前', async () => {
+  const {ctx, client, pendingStore} = makeCtx();
+  ctx.options.injectSystemFirst = true;
+  seedProbe(ctx);
+  addSession(client, {id: 'ses_1'});
+  pendingStore.map.set('ses_1', {
+    parts: [{type: 'text', text: 'real task'}],
+    messageID: 'msg_1',
+    ts: Date.now(),
+  });
+  client.setPromptHandler(async () => ({}));
+  const ok = await sendRound2(ctx, 'ses_1');
+  assert.equal(ok, true);
+  assert.equal(client._promptCalls.length, 1, '合并模式只发一条消息');
+  const [call] = client._promptCalls.map(
+    c =>
+      c.body as {
+        parts: Array<Record<string, unknown>>;
+        agent: string;
+        model: {providerID: string; modelID: string};
+        noReply?: boolean;
+      }
+  );
+  assert.equal(call.agent, 'build');
+  assert.equal(call.noReply, undefined, '合并模式不需要 noReply');
+  assert.equal(call.parts.length, 2, 'system part + 真实任务');
+  assert.ok(
+    String(call.parts[0]!.text).includes(INJECT_MARKER),
+    'system part 应放在最前'
+  );
+  assert.equal(String(call.parts[1]!.text), 'real task');
+  assert.ok(
+    client._logs.some(l => l.msg.includes('round2.sent')),
+    'round2.sent 日志'
+  );
+});
+
 test('TC-2-28b: firstTurnFilter stripPersona 应用到轮 2 user system', async () => {
   const {ctx, client, pendingStore} = makeCtx();
   seedProbe(ctx);

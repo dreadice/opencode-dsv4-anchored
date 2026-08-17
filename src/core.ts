@@ -69,8 +69,11 @@ export type EnsureOptions = {
   anchorText?: string;
   /** TUI toast 提示开关（触发/生效的可见标记；默认开启）。 */
   toast?: boolean;
-  /** 默认 true：子代理会话跳过插件处理（避免锚定提前结算/主代理重入）。 */
+  /** 默认 false：子代理会话保持原流程；true 时跳过插件处理（避免锚定提前结算/主代理重入）。 */
   skipSubagents?: boolean;
+  /** 默认 false：轮 2 先发真实 user 消息，再发 user system；true 时合并为同一条
+   * 消息且 user system 在前（指令遵循更强，但可能导致会话摘要/标题生成错误）。 */
+  injectSystemFirst?: boolean;
 };
 
 /** TUI toast：fire-and-forget，不阻塞 hook 链路。 */

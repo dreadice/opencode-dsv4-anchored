@@ -6,6 +6,8 @@ import {
   hasInjectionMarkerFor,
   buildInjectionPart,
   filterFirstTurnSystem,
+  newPartId,
+  newLowPartId,
 } from '@/inject';
 
 const textPart = (text: string, extra: object = {}) => ({
@@ -52,6 +54,12 @@ test('TC-1-30b: 注入 part id 唯一（两次生成不同）', () => {
   const a = buildInjectionPart('s', 'ses_1', 'msg_1', marker);
   const b = buildInjectionPart('s', 'ses_1', 'msg_1', marker);
   assert.notEqual(a.id, b.id);
+});
+
+test('newLowPartId 排序在普通 part id 前', () => {
+  const low = newLowPartId();
+  const normal = newPartId();
+  assert.ok(low < normal, `low id 应排序在前: ${low} vs ${normal}`);
 });
 
 const REAL_SYSTEM = [

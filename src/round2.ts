@@ -2,6 +2,7 @@ import {
   filterFirstTurnSystem,
   buildInjectionPart,
   injectionMarkerFor,
+  newLowPartId,
 } from '@/inject';
 import {probeKey, type ProbeStore} from '@/probe';
 import {savePendingStore, type PendingStore} from '@/pending';
@@ -141,32 +142,54 @@ export async function sendRound2(
     const systemPart = buildSystemPart(ctx, session, sessionID, pending);
 
     if (systemPart) {
-      // 1) 真实任务先入库（noReply 不跑，标题生成只看这条，看不到 system）
-      await ctx.client.session.prompt({
-        path: {id: sessionID},
-        body: {
-          parts: pending.parts,
-          agent: session.agent,
-          model,
-          noReply: true,
-        },
-      });
-      firstSent = true;
-      // 2) 注入 system 的消息再跑（synthetic，TUI 隐藏）
-      const promptPromise = ctx.client.session.prompt({
-        path: {id: sessionID},
-        body: {
-          parts: [systemPart],
-          agent: session.agent,
-          model,
-        },
-      });
-      ctx.toast?.({
-        title: 'dsv4-anchored',
-        message: '轮 2 已自动发出（真实任务 + 完整工具）',
-        variant: 'info',
-      });
-      await promptPromise;
+      if (ctx.options.injectSystemFirst === true) {
+        // 合并为同一条 user 消息，system part 放在真实任务前。
+        // 指令遵循更强，但标题/摘要生成可能看到 synthetic system 导致摘要错误。
+        // opencode 服务端按 part id 排序，因此给 system part 一个排序靠前的 id。
+        systemPart.id = newLowPartId();
+        const promptPromise = ctx.client.session.prompt({
+          path: {id: sessionID},
+          body: {
+            parts: [systemPart, ...pending.parts],
+            agent: session.agent,
+            model,
+          },
+        });
+        ctx.toast?.({
+          title: 'dsv4-anchored',
+          message: '轮 2 已自动发出（真实任务 + 完整工具）',
+          variant: 'info',
+        });
+        await promptPromise;
+        firstSent = true;
+      } else {
+        // 1) 真实任务先入库（noReply 不跑，标题生成只看这条，看不到 system）
+        await ctx.client.session.prompt({
+          path: {id: sessionID},
+          body: {
+            parts: pending.parts,
+            agent: session.agent,
+            model,
+            noReply: true,
+          },
+        });
+        firstSent = true;
+        // 2) 注入 system 的消息再跑（synthetic，TUI 隐藏）
+        const promptPromise = ctx.client.session.prompt({
+          path: {id: sessionID},
+          body: {
+            parts: [systemPart],
+            agent: session.agent,
+            model,
+          },
+        });
+        ctx.toast?.({
+          title: 'dsv4-anchored',
+          message: '轮 2 已自动发出（真实任务 + 完整工具）',
+          variant: 'info',
+        });
+        await promptPromise;
+      }
     } else {
       // 没有 system 可注入时，直接跑真实任务
       const promptPromise = ctx.client.session.prompt({

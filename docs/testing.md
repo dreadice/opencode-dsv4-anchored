@@ -203,6 +203,7 @@ const messages = [
 | TC-2-36       | build 完成后新建 custom 会话  | build 走到 verified → 新建 custom 首轮                           | custom 首轮仍锚定 + pending；轮 2 agent=custom，注入 marker 含 custom 且带 custom system                                                       |
 | TC-2-37       | 动态 AGENTS.md 兼容           | unsealed 历史含 Read 工具输出 `Instructions from: e2e/AGENTS.md` | 历史工具输出原样保留；后续消息正常注入/放行，不剥离动态 AGENTS.md                                                                              |
 | TC-2-38       | 子代理跳过配置                | `skipSubagents: true` + `parentID` 存在                          | ensure 返回 none、不锚定/不注入；system.transform 不替换；sendRound2 不发并清理 pending                                                        |
+| TC-2-39       | 轮 2 system 前置              | `injectSystemFirst: true` + pending 存在                         | 只发一条 prompt，parts = [user system, 真实任务]，无 noReply，system 在最前                                                                    |
 
 ## 5. L3 真机集成测试（opencode run + opencode/deepseek-v4-flash-free）
 

@@ -16,6 +16,14 @@ export function newPartId(): string {
   return `prt_${Date.now().toString(16)}${randomBytes(8).toString('hex')}`;
 }
 
+/**
+ * 生成一个排序靠前的 part id（前缀全 0）。opencode 服务端会按 part id 排序；
+ * 需要把 synthetic system part 放在真实任务前面时使用。
+ */
+export function newLowPartId(): string {
+  return `prt_${'0'.repeat(24)}${randomBytes(8).toString('hex')}`;
+}
+
 /** 历史 parts 中是否已有指定标记（幂等判定，含 compaction 后重注入判断）。 */
 export function hasMarker(
   parts: Array<{type: string; text?: unknown}>,

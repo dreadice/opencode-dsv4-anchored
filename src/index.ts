@@ -39,8 +39,11 @@ type Dsv4Options = {
   firstTurnFilter?: FirstTurnFilter;
   /** TUI toast 提示（触发/生效的可见标记）；false 关闭。 */
   toast?: boolean;
-  /** 默认 true：子代理会话跳过插件处理（避免锚定提前结算/主代理重入）。 */
+  /** 默认 false：子代理会话保持原流程；true 时跳过插件处理（避免锚定提前结算/主代理重入）。 */
   skipSubagents?: boolean;
+  /** 默认 false：轮 2 先发真实 user 消息，再发 user system；true 时合并为同一条
+   * 消息且 user system 在前（指令遵循更强，但可能导致会话摘要/标题生成错误）。 */
+  injectSystemFirst?: boolean;
 };
 
 function resolveOptions(options?: PluginOptions): EnsureOptions {
@@ -62,6 +65,7 @@ function resolveOptions(options?: PluginOptions): EnsureOptions {
         : (opts.anchorText ?? ZERO_ANCHOR_TEXT),
     toast: opts.toast,
     skipSubagents: opts.skipSubagents ?? false,
+    injectSystemFirst: opts.injectSystemFirst ?? false,
   };
 }
 

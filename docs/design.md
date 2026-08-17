@@ -382,17 +382,18 @@ opencode 官方支持两种插件加载方式（本地文件 / npm 包），互�
 
 ### 8.2 配置项（插件 options）
 
-| 项                | 默认                                                                              | 说明                                                                                          |
-| ----------------- | --------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
-| `models`          | `["deepseek*v4*"]`                                                                | 门控模型通配符                                                                                |
-| `whitelist`       | `[]`                                                                              | seeded 期白名单（**round-10 起 zero 形态：0 工具**，对齐 dsh zero-anchored 实测）             |
-| `anchorText`      | `"This round is a test. Tools are not open yet; all tools will open next round."` | zero-anchored 锚定消息（dsh 原文；设为 `""` 关闭锚定轮，退回旧形态）                          |
-| `injectSystem`    | 启用                                                                              | 轮 2 注入 user system（`false` 关闭，仅锚定 + 真实消息）                                      |
-| `firstTurnFilter` | `{stripPersona: true}`                                                            | 注入前选择性剥离（D11；默认去 opencode persona 首句）                                         |
-| `verify.n`        | `3`                                                                               | 判别窗口（常量）                                                                              |
-| `verify.terms`    | 英文：we `["we need","we"]`、let `["let me"]`                                     | 轨迹标记词表（round-11：`let's` 非失败信号；中文词表已废弃）                                  |
-| `toast`           | 启用                                                                              | TUI toast 提示（触发/生效的可见标记；`false` 关闭）                                           |
-| `skipSubagents`   | `false`                                                                           | 子代理默认走锚定流程；`true` 时子代理会话跳过插件处理（不锚定/不注入/不替换 system/不发轮 2） |
+| 项                  | 默认                                                                              | 说明                                                                                                                                                                |
+| ------------------- | --------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `models`            | `["deepseek*v4*"]`                                                                | 门控模型通配符                                                                                                                                                      |
+| `whitelist`         | `[]`                                                                              | seeded 期白名单（**round-10 起 zero 形态：0 工具**，对齐 dsh zero-anchored 实测）                                                                                   |
+| `anchorText`        | `"This round is a test. Tools are not open yet; all tools will open next round."` | zero-anchored 锚定消息（dsh 原文；设为 `""` 关闭锚定轮，退回旧形态）                                                                                                |
+| `injectSystem`      | 启用                                                                              | 轮 2 注入 user system（`false` 关闭，仅锚定 + 真实消息）                                                                                                            |
+| `injectSystemFirst` | `false`                                                                           | 开启后恢复“变更前”的单条消息实现：轮 2 把 user system 和真实任务合并为同一条消息且 system 在前；指令遵循更强，但标题/摘要生成可能看到 synthetic system 导致摘要错误 |
+| `firstTurnFilter`   | `{stripPersona: true}`                                                            | 注入前选择性剥离（D11；默认去 opencode persona 首句）                                                                                                               |
+| `verify.n`          | `3`                                                                               | 判别窗口（常量）                                                                                                                                                    |
+| `verify.terms`      | 英文：we `["we need","we"]`、let `["let me"]`                                     | 轨迹标记词表（round-11：`let's` 非失败信号；中文词表已废弃）                                                                                                        |
+| `toast`             | 启用                                                                              | TUI toast 提示（触发/生效的可见标记；`false` 关闭）                                                                                                                 |
+| `skipSubagents`     | `false`                                                                           | 子代理默认走锚定流程；`true` 时子代理会话跳过插件处理（不锚定/不注入/不替换 system/不发轮 2）                                                                       |
 
 ### 8.2.1 白名单 permission 名 ↔ 工具映射
 
