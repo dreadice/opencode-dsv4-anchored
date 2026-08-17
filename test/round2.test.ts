@@ -168,6 +168,29 @@ test('TC-2-31b: 无 pending / sending 中 → 不发', async () => {
   assert.ok(pendingStore.map.has('ses_1'), 'pending 保留');
 });
 
+test('skipSubagents:true 时轮 2 跳过子代理并清理 pending', async () => {
+  const {ctx, client, pendingStore} = makeCtx();
+  ctx.options.skipSubagents = true;
+  addSession(client, {id: 'ses_sub', parentID: 'ses_parent'});
+  pendingStore.map.set('ses_sub', {
+    parts: [{type: 'text', text: 'real task'}],
+    messageID: 'msg_1',
+    ts: Date.now(),
+  });
+  const ok = await sendRound2(ctx, 'ses_sub');
+  assert.equal(ok, false);
+  assert.equal(client._promptCalls.length, 0, '不应发轮 2');
+  assert.equal(
+    pendingStore.map.has('ses_sub'),
+    false,
+    '跳过时应清理 pending，避免反复触发'
+  );
+  assert.ok(
+    client._logs.some(l => l.msg.includes('round2.subagent-skip')),
+    '应记录 round2.subagent-skip'
+  );
+});
+
 test('TC-2-28c: 探针缓存缺（异常态）→ 轮 2 仍发（无 user system part，真实消息不丢）', async () => {
   const {ctx, client, pendingStore} = makeCtx();
   addSession(client, {id: 'ses_1'});

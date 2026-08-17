@@ -27,6 +27,7 @@ export type Round2Ctx = {
       get(opts: {path: {id: string}}): Promise<{
         directory: string;
         agent: string;
+        parentID?: string;
         model?: {id: string; providerID: string};
         permission?: Rule[];
       }>;
@@ -118,13 +119,22 @@ export async function sendRound2(
   if (sending.has(sessionID)) return false;
   const pending = map.get(sessionID);
   if (!pending) return false;
-  // 防重：发送前清 pending（内存 + 磁盘）
-  map.delete(sessionID);
-  void savePendingStore(ctx.pendingStore, ctx.pendingFile);
-  sending.add(sessionID);
   let firstSent = false;
   try {
     const session = await ctx.client.session.get({path: {id: sessionID}});
+    if (ctx.options.skipSubagents === true && session.parentID !== undefined) {
+      map.delete(sessionID);
+      void savePendingStore(ctx.pendingStore, ctx.pendingFile);
+      ctx.logger.info('round2.subagent-skip', {
+        sessionID,
+        agent: session.agent,
+      });
+      return false;
+    }
+    // 防重：发送前清 pending（内存 + 磁盘）
+    map.delete(sessionID);
+    void savePendingStore(ctx.pendingStore, ctx.pendingFile);
+    sending.add(sessionID);
     const model = session.model
       ? {providerID: session.model.providerID, modelID: session.model.id}
       : undefined;

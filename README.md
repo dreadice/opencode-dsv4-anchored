@@ -1,57 +1,68 @@
 # opencode-dsv4-anchored
 
-> 把 [dsh-anchored-standard](https://github.com/xiaobright/dsh-anchored-standard)
-> 的「首轮轨迹约束 + 逐步解锁」方法移植为 opencode 插件，解决 **DeepSeek V4 系列
-> 的过拟合问题**：模型一见完整 system 就抢跑（首轮狂开工具、多步并行、话痨式
-> show off），把首轮轨迹带偏。
+一个面向 opencode 的插件，用来改善 DeepSeek V4 系列模型在编码助手里的“抢跑”问题。
 
-## 工作原理
+如果你刚接触这个项目，可以把它理解为：**在 DeepSeek V4 真正开始干活之前，先让它“热身”一轮，再把工具和完整上下文交给它。**
 
-`zero-anchored` 锚定轮 + 真实消息推迟（对齐 dsh zero-anchored/whoami）：
+---
 
-```
-轮 1（锚定轮）：
-  ├─ 探针：静默捕获真实 system（零 token，缓存按 directory/agent/model/天）
-  ├─ system 整体替换为纯 Minimal persona
-  ├─ 真实消息推迟（存盘 pending）→ 模型只看到固定锚定消息 + 0 工具
-  └─ 锚定回复落库（"we" 风格 = 成功信号）
-       → event（session.idle）自动发轮 2
-轮 2（真实任务轮）：
-  ├─ 解锁：工具按 agent ruleset 全量恢复
-  ├─ 注入去 persona 的真实 system（synthetic，TUI 隐藏）
-  └─ 模型带全量工具处理真实任务
-后续：特征判别（N=3 轮内：reasoning+text 拼接 idx(we系) < idx(let系)）
-      → 达成：哨兵 verified；未达成：giveup（warn 一次，不锁死）
-```
+## 这个插件解决什么问题？
 
-- **0 工具是唯一实证出 "we" 锚定形态的配置**（官方 v4-pro 实测：minimal + 0
-  工具 → "We need answer..."；双工具 → standard-like）
-- 状态全部持久化（session permission 哨兵 + 缓存文件），重启/resume/compaction
-  可还原
-- 探针失败 → 该 key 按 TTL 旁路，会话完全原生（不替换/不锚定/不注入）
+DeepSeek V4 模型在拿到完整系统提示词后，经常会出现这些现象：
 
-## 中途切换 agent / model
+- 第一轮就急着调用大量工具；
+- 同时并行做好几件事；
+- 输出很长，但思路一开始就跑偏。
 
-同会话中途切换 agent 或门控模型时，插件会在下一条 `chat.message` 自动：
+这个插件借鉴了 [dsh-anchored-standard](https://github.com/xiaobright/dsh-anchored-standard) 的做法：先用一轮“锚定消息”把模型的起始轨迹拉回稳定状态，然后再放开工具执行真实任务。
 
-1. 用 `__dsv4_agent__` / `__dsv4_model__` 哨兵检测到变化；
-2. 重同步权限：把当前 agent 的 ruleset 追加到 session permission 末尾，
-   覆盖旧 agent 的权限（例如 explore 的 `*: deny` 会压住之前 build 的
-   `*: allow`）；
-3. 重新注入当前 agent/model 的原始 system（带 agent/model 指纹的幂等标记）；
-4. 切换到非门控模型（如 `hy3-free`）时，不替换 system、不注入，但会把
-   权限恢复成原生状态（日志 `native.restore`）。
+---
 
-日志关键词：`resync`、`native.restore`、`injectSource=resync`。
+## 它怎么工作？
+
+简单来说，插件会把一次真实的对话拆成两轮：
+
+### 第一轮：先热身，不干活
+
+1. 插件会先“探针”一次：把当前真正的系统提示词保存下来。这个过程不会真正调用模型生成内容，所以不会消耗 token。
+2. 插件把系统提示词替换成一句很简短的角色说明。
+3. 你真正要问的问题会被暂时放在一边（存到本地 pending 文件）。
+4. 模型只看到一句固定的测试消息，并且**不开放任何工具**。
+5. 模型通常会先给出一个简短、稳定的回复。
+
+### 第二轮：再干活
+
+1. 第一轮回复落库后，插件自动恢复工具权限。
+2. 插件把之前保存的系统提示词（去掉 opencode 自带身份描述）和你的真实问题一起发给模型。
+3. 此时模型带着完整上下文和全部工具开始处理真实任务。
+
+### 后续：持续判断
+
+插件会根据模型前几轮回复的用词特征，判断锚定是否成功。例如：
+
+- 如果模型先出现类似 `we need` 的表达，通常说明锚定成功；
+- 如果先出现类似 `let me` 的表达，可能说明锚定效果不够好。
+
+判断结果只会影响插件内部状态，不会锁死工具，也不会阻止你继续使用。
+
+---
 
 ## 安装
 
-opencode 支持两种插件加载方式（官方文档：本地文件 / npm 包），任选其一
-（**互斥，勿同时使用**——全局 `~/.config/opencode/plugins/`、项目
-`.opencode/plugins/*.js`、`plugin` 配置同时存在会双加载，chat.message 触发
-两次、探针重复、toast 重复；插件内有单例兜底，但应避免）：
+要求：opencode `>= 1.18.18`。
 
-**1. npm 包（推荐，开箱即用）**——opencode.json：
+### 配置文件在哪里？
+
+opencode 会读取以下位置的配置文件，任选其一即可：
+
+- 全局配置：`~/.config/opencode/opencode.json` 或 `~/.config/opencode/opencode.jsonc`
+- 项目配置：项目根目录下的 `opencode.json` 或 `opencode.jsonc`
+
+把下面的 `plugin` 配置写到其中一个文件里。全局配置对所有项目生效，项目配置只对当前项目生效。
+
+### 方式一：通过 npm 安装（推荐）
+
+在 opencode 配置文件中加入插件即可：
 
 ```json
 {
@@ -59,66 +70,162 @@ opencode 支持两种插件加载方式（官方文档：本地文件 / npm 包�
 }
 ```
 
-**2. 本地文件**：
+### 方式二：使用本地文件
+
+先构建插件，再复制到项目的插件目录：
 
 ```bash
-npm run build                 # esbuild bundle → dist/index.js
+npm run build
 cp dist/index.js <项目>/.opencode/plugins/dsv4-anchored.js
 ```
 
-> 要求：opencode `>= 1.18.18`（`engines.opencode` 兼容检查）。
+> 注意：两种安装方式任选其一，不要同时使用，否则可能造成插件重复加载。
+
+---
 
 ## 配置
 
-| 选项              | 默认                                     | 说明                                                                 |
-| ----------------- | ---------------------------------------- | -------------------------------------------------------------------- |
-| `models`          | `["deepseek*v4*"]`                       | 门控模型通配符（providerID/modelID）                                 |
-| `whitelist`       | `[]`                                     | seeded 期白名单（**0 工具**，实证唯一出 we 的形态）                  |
-| `anchorText`      | dsh 原文（"This round is a test..."）    | zero 锚定消息；设 `""` 关闭锚定轮                                    |
-| `injectSystem`    | 启用                                     | 轮 2 注入去 persona 的真实 system                                    |
-| `firstTurnFilter` | `{stripPersona: true}`                   | 注入前选择性剥离（D11）                                              |
-| `verify.n`        | `3`                                      | 判别窗口（常量）                                                     |
-| `verify.terms`    | 英文 we/let 词表                         | 轨迹标记词表                                                         |
-| `toast`           | 启用                                     | TUI toast 提示（锚定轮/轮 2/解锁/判别/旁路，见 docs/design.md §7.4） |
-| `probe.ttlMs`     | `300000`                                 | 探针失败旁路 TTL                                                     |
-| `probe.cacheDir`  | `~/.local/share/opencode/dsv4-anchored/` | 缓存与状态文件目录                                                   |
+插件提供以下配置项：
 
-## 验证
+| 配置项            | 默认值                                                                            | 作用                                                                 |
+| ----------------- | --------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
+| `models`          | `["deepseek*v4*"]`                                                                | 只有匹配这些模型名时插件才会生效                                     |
+| `whitelist`       | `[]`                                                                              | 第一轮允许使用的工具白名单。默认是空，也就是第一轮不开放任何工具     |
+| `anchorText`      | `"This round is a test. Tools are not open yet; all tools will open next round."` | 第一轮展示给模型的固定消息。设为 `""` 可关闭锚定轮                   |
+| `injectSystem`    | 启用                                                                              | 第二轮是否把保存的完整系统提示词注入回去                             |
+| `firstTurnFilter` | `{stripPersona: true}`                                                            | 注入系统提示词前，是否去掉 opencode 自带的身份描述                   |
+| `verifyN`         | `3`                                                                               | 判断锚定是否成功时，最多检查前几轮回复                               |
+| `verifyTerms`     | `{"we": ["we need", "we"], "let": ["let me"]}`                                    | 用于判断锚定成功的英文关键词                                         |
+| `toast`           | 启用                                                                              | 是否在 opencode 界面显示插件运行提示                                 |
+| `skipSubagents`   | `false`                                                                           | 是否跳过子代理会话。默认不跳过；设为 `true` 可让子代理不经过锚定流程 |
+| `probeTtlMs`      | `300000`                                                                          | 探针失败后，多久内不再重试                                           |
+| `cacheDir`        | `~/.local/share/opencode/dsv4-anchored/`                                          | 插件状态和探针缓存的存放目录                                         |
 
-```bash
-OPENCODE_LOG_LEVEL=DEBUG opencode          # 插件日志（默认只落盘）
-grep dsv4-anchored ~/.local/share/opencode/log/opencode.log
-cat ~/.local/share/opencode/dsv4-anchored/probe-cache.json   # 探针缓存/状态
+### 配置示例
+
+在 opencode 配置文件的 `plugin` 数组里，把插件名后面的 `{}` 换成你的配置即可：
+
+```json
+{
+  "plugin": [
+    [
+      "@dreadice/opencode-dsv4-anchored",
+      {
+        "models": ["deepseek*v4*"],
+        "whitelist": [],
+        "anchorText": "This round is a test. Tools are not open yet; all tools will open next round.",
+        "injectSystem": true,
+        "firstTurnFilter": {
+          "stripPersona": true
+        },
+        "verifyN": 3,
+        "verifyTerms": {
+          "we": ["we need", "we"],
+          "let": ["let me"]
+        },
+        "toast": true,
+        "skipSubagents": false,
+        "probeTtlMs": 300000,
+        "cacheDir": "~/.local/share/opencode/dsv4-anchored/"
+      }
+    ]
+  ]
+}
 ```
 
-事件链：`plugin.loaded(version) → probe.success → chat.message(seeded) →
-round2.sent → unlock → verify.passed/giveup`。
+如果只想用默认配置，保留空对象 `{}` 即可，不需要写上面这些内容。
 
-## 与其他插件共存
+---
 
-命名空间全部隔离（哨兵 permission `__dsv4_stage__`、幂等标记
-`[dsv4-anchored:injected]`、状态文件 `~/.local/share/opencode/dsv4-anchored/`、
-日志前缀 `dsv4-anchored`），互不干扰。已知交互点：
+## 怎么确认插件生效了？
 
-- **`experimental.chat.system.transform` 是共享输出**：多个插件都改同一个
-  `output.system` 数组，**后注册者生效**——本插件会把 system 整体替换为
-  minimal persona。与同样替换 system 的插件并存时，行为取决于注册顺序。
-- **锚定轮 `deny *` 会暂时隐藏其他插件注册的工具**：解锁后按 agent ruleset
-  恢复（build 的 `*: allow` 会放行一切，与原生一致），不影响长期行为。
-- chat.message 的 parts 注入是叠加的（本插件 prepend 自己的 part），不删除
-  其他插件的内容。
+1. 打开 opencode，随便发一条消息。
+2. 如果第一轮回复是默认锚定消息（`This round is a test...`），说明插件已经接管第一轮。
+3. 稍等片刻，你的真实消息会自动在第二轮发出。
+4. 也可以查看日志：
+
+```bash
+grep dsv4-anchored ~/.local/share/opencode/log/opencode.log
+```
+
+---
+
+## 常见问题（FAQ）
+
+### 这个插件会改变我使用的模型吗？
+
+不会。插件只改变发送给模型的上下文和工具开放时机，不会替换你选择的模型。
+
+### 会影响非 DeepSeek 模型吗？
+
+默认不会。只有模型名匹配 `deepseek*v4*` 时，插件才会介入。
+
+### 探针会消耗 token 吗？
+
+当前实现不会。探针在真正调用模型之前就被终止，它只负责把系统提示词保存下来。
+
+### 为什么我看到了 “This round is a test...”？
+
+这是插件默认的锚定消息，表示第一轮正在执行。你的真实消息会在第二轮自动发出，不需要手动重发。
+
+### 如果探针失败会怎样？
+
+插件会临时按“原生模式”放行，你的会话不会被卡住，也不会丢失消息。
+
+### 可以关闭这个插件吗？
+
+可以。常见做法：
+
+- 把 `anchorText` 设为 `""`，关闭锚定轮；
+- 把 `models` 改为不匹配的模型名；
+- 或者直接从 opencode 配置中移除插件。
+
+### 状态和数据存在哪里？
+
+探针缓存和会话状态存放在：
+
+```text
+~/.local/share/opencode/dsv4-anchored/
+```
+
+### 和其他插件一起用会冲突吗？
+
+大多数情况下可以共存。需要注意两点：
+
+- 多个插件同时修改系统提示词时，后注册的插件会生效；
+- 锚定轮期间工具会被临时隐藏，第二轮会按 agent 规则恢复。
+
+### 子代理会受影响吗？
+
+默认情况下，子代理也会走锚定流程，所以可能出现“先回复 Understood，之后才继续干活”的现象。如果你希望子代理完全跳过插件处理，可以在配置里设置：
+
+```json
+{
+  "plugin": [
+    [
+      "@dreadice/opencode-dsv4-anchored",
+      {
+        "skipSubagents": true
+      }
+    ]
+  ]
+}
+```
+
+该行为已记录为 [ISSUE-003](docs/issues.md)。
+
+---
 
 ## 文档
 
-- `docs/design.md` — 系统设计（目标/行为/时序/状态机/配置/验证）
-- `docs/research.md` — 完整研究报告（opencode 机制源码：文件:行号）
-- `docs/decisions.md` — 决策记录（D1-D13）
-- `docs/testing.md` — 测试用例（L1 单元 / L2 fake client / L3 真机）
-- `docs/live-testing.md` — 真机测试手册（`opencode serve` + HTTP API）
-- `docs/plan.md` — 执行计划
-- `docs/handoff.md` — 跨会话状态与讨论留档
+- [设计文档](docs/design.md) — 系统设计、状态机、配置说明
+- [研究报告](docs/research.md) — opencode 机制源码分析
+- [决策记录](docs/decisions.md) — 设计决策历史
+- [测试文档](docs/testing.md) — 测试用例说明
+- [真机测试手册](docs/live-testing.md) — 使用 opencode serve 验证插件
+- [计划](docs/plan.md) — 项目执行计划
+- [跨会话记录](docs/handoff.md) — 开发过程讨论留档
 
 ## License
 
-[MIT](LICENSE)。引用内容版权归各自作者所有：opencode（2025）、DeepSeek
-（2026）、xiaobright（2026），详见 LICENSE 的版权归属声明。
+[MIT](LICENSE)。

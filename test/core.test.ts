@@ -320,6 +320,26 @@ test('TC-2-15: subagent（parentID）独立处理', async () => {
   );
 });
 
+test('skipSubagents:true 时 subagent 跳过插件处理', async () => {
+  const {ctx, client} = makeCtx();
+  ctx.options.skipSubagents = true;
+  seedProbe(ctx);
+  addSession(client, {id: 'ses_sub', parentID: 'ses_parent'});
+  const parts = [textPart('hello')];
+  const res = await ensureState(ctx, input('ses_sub', parts));
+  assert.equal(res.action, 'none');
+  assert.equal(parts.length, 1, '不应替换为锚定消息');
+  assert.equal(
+    client._sessions.get('ses_sub')!.permission.length,
+    0,
+    '不应写入 seeded 权限'
+  );
+  assert.ok(
+    client._logs.some(l => l.msg.includes('subagent.skip')),
+    '应记录 subagent.skip'
+  );
+});
+
 test('TC-2-16: 门控不命中 → 全旁路（原生）', async () => {
   const {ctx, client} = makeCtx();
   addSession(client, {id: 'ses_1'});

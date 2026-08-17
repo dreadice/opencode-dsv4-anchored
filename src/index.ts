@@ -39,6 +39,8 @@ type Dsv4Options = {
   firstTurnFilter?: FirstTurnFilter;
   /** TUI toast 提示（触发/生效的可见标记）；false 关闭。 */
   toast?: boolean;
+  /** 默认 true：子代理会话跳过插件处理（避免锚定提前结算/主代理重入）。 */
+  skipSubagents?: boolean;
 };
 
 function resolveOptions(options?: PluginOptions): EnsureOptions {
@@ -59,6 +61,7 @@ function resolveOptions(options?: PluginOptions): EnsureOptions {
         ? undefined
         : (opts.anchorText ?? ZERO_ANCHOR_TEXT),
     toast: opts.toast,
+    skipSubagents: opts.skipSubagents ?? false,
   };
 }
 

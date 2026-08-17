@@ -62,6 +62,13 @@ export async function systemTransform(
   }
 
   const session = await ctx.client.session.get({path: {id: input.sessionID}});
+  if (ctx.options.skipSubagents === true && session.parentID !== undefined) {
+    ctx.logger.info('system.transform.subagent-skip', {
+      sessionID: input.sessionID,
+      agent: session.agent,
+    });
+    return;
+  }
   const key = probeKey(session.directory, session.agent, input.model.modelID);
   const cached = ctx.probeStore.map.get(key);
   if (

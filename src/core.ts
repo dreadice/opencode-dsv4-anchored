@@ -69,6 +69,8 @@ export type EnsureOptions = {
   anchorText?: string;
   /** TUI toast 提示开关（触发/生效的可见标记；默认开启）。 */
   toast?: boolean;
+  /** 默认 true：子代理会话跳过插件处理（避免锚定提前结算/主代理重入）。 */
+  skipSubagents?: boolean;
 };
 
 /** TUI toast：fire-and-forget，不阻塞 hook 链路。 */
@@ -160,6 +162,17 @@ export async function ensureState(
   const agentChanged = session.agent !== trackedAgent;
   const modelChanged = input.model.modelID !== trackedModel;
   const changed = agentChanged || modelChanged;
+
+  // 子代理默认按原流程注入；配置 skipSubagents: true 后跳过插件处理，
+  // 避免锚定协议让 Task 子代理先返回占位回复导致主代理重入/重复执行。
+  if (options.skipSubagents === true && session.parentID !== undefined) {
+    logger.info('subagent.skip', {
+      sessionID: input.sessionID,
+      agent: session.agent,
+      stage,
+    });
+    return {action: 'none', stage};
+  }
 
   // 非门控模型：插件不替换 system/不注入，但若会话已被插件碰过（有 seeded
   // deny），需要把权限恢复成当前 agent 的自然 ruleset，避免残留锁工具。

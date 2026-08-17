@@ -15,6 +15,7 @@ const OPTIONS = {
   verifyN: 3,
   verifyTerms: DEFAULT_TERMS,
   probeTtlMs: 300000,
+  skipSubagents: false,
 };
 
 const MODEL = {providerID: 'opencode', modelID: 'deepseek-v4-flash-free'};
@@ -76,6 +77,19 @@ test('TC-2-17: 真实会话 → 替换 minimal', async () => {
   const output = {system: ['long original system content']};
   await systemTransform(ctx, {sessionID: 'ses_1', model: MODEL}, output);
   assert.deepEqual(output.system, [MINIMAL_PERSONA]);
+});
+
+test('system.transform：skipSubagents:true 时子代理不替换 system', async () => {
+  const {ctx, client} = makeCtx();
+  ctx.options.skipSubagents = true;
+  addSession(client, {id: 'ses_sub', parentID: 'ses_parent'});
+  const output = {system: ['full system']};
+  await systemTransform(ctx, {sessionID: 'ses_sub', model: MODEL}, output);
+  assert.deepEqual(output.system, ['full system']);
+  assert.ok(
+    client._logs.some(l => l.msg.includes('system.transform.subagent-skip')),
+    '应记录 system.transform.subagent-skip'
+  );
 });
 
 test('TC-2-19: bypass（probe failed TTL 内）→ 原样放行', async () => {
